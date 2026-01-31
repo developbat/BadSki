@@ -19,9 +19,8 @@ export type BadItemId =
   | 'lemon'
   | 'onion'
   | 'clown'
-  | 'spider';
-
-export type ObstacleId = 'stone' | 'tree';
+  | 'spider'
+  | 'bomb';
 
 export type CollectibleKind = 'good' | 'bad' | 'obstacle';
 
@@ -29,13 +28,11 @@ export interface GoodItemDef {
   id: GoodItemId;
   emoji: string;
   name: string;
-  /** Çıkma ağırlığı (iyi itemler arasında) */
+  /** İkon + matematiksel açıklama (popup’ta gösterilir) */
+  description: string;
   weight: number;
-  /** Süre ms (0 = anlık) */
   durationMs: number;
-  /** Puan (0 = puan vermez) */
   points: number;
-  /** 'super_speed' | 'ghost' | null */
   effect: 'super_speed' | 'ghost' | 'speed_boost' | null;
 }
 
@@ -43,43 +40,36 @@ export interface BadItemDef {
   id: BadItemId;
   emoji: string;
   name: string;
+  /** İkon + matematiksel açıklama (popup’ta gösterilir) */
+  description: string;
   weight: number;
   durationMs: number;
-  /** Hız çarpanı (0.5 = yarıya düşür) */
   speedMultiplier: number;
+  /** Puan cezası (örn. bomba: -50) */
+  scorePenalty?: number;
 }
 
-export interface ObstacleDef {
-  id: ObstacleId;
-  weight: number;
-}
-
-// —— İYİ OBJELER (emoji, isim, ağırlık, süre ms, puan, etki) ——
+// —— İYİ OBJELER (emoji, isim, description, ağırlık, süre, puan, etki) ——
 export const GOOD_ITEMS: GoodItemDef[] = [
-  { id: 'rocket', emoji: '🚀', name: 'Roket', weight: 8, durationMs: 5000, points: 0, effect: 'super_speed' },
-  { id: 'ghost', emoji: '👻', name: 'Hayalet', weight: 5, durationMs: 5000, points: 0, effect: 'ghost' },
-  { id: 'star', emoji: '⭐', name: 'Yıldız', weight: 12, durationMs: 0, points: 50, effect: null },
-  { id: 'diamond', emoji: '💎', name: 'Elmas', weight: 4, durationMs: 0, points: 100, effect: null },
-  { id: 'clover', emoji: '🍀', name: 'Yonca', weight: 6, durationMs: 0, points: 20, effect: null },
-  { id: 'fire', emoji: '🔥', name: 'Ateş', weight: 7, durationMs: 3000, points: 0, effect: 'speed_boost' },
-  { id: 'mushroom', emoji: '🍄', name: 'Mantar', weight: 8, durationMs: 2000, points: 0, effect: 'speed_boost' },
-  { id: 'target', emoji: '🎯', name: 'Hedef', weight: 10, durationMs: 0, points: 30, effect: null },
+  { id: 'rocket', emoji: '🚀', name: 'Roket', description: '🚀 = ⚡ × 2', weight: 8, durationMs: 5000, points: 0, effect: 'super_speed' },
+  { id: 'ghost', emoji: '👻', name: 'Hayalet', description: '👻 = 🛡️', weight: 5, durationMs: 5000, points: 0, effect: 'ghost' },
+  { id: 'star', emoji: '⭐', name: 'Yıldız', description: '⭐ = ⭐ + 50', weight: 12, durationMs: 0, points: 50, effect: null },
+  { id: 'diamond', emoji: '💎', name: 'Elmas', description: '💎 = ⭐ + 100', weight: 4, durationMs: 0, points: 100, effect: null },
+  { id: 'clover', emoji: '🍀', name: 'Yonca', description: '🍀 = ⭐ + 20', weight: 6, durationMs: 0, points: 20, effect: null },
+  { id: 'fire', emoji: '🔥', name: 'Ateş', description: '🔥 = ⚡ + 40 (10 sn)', weight: 7, durationMs: 10000, points: 0, effect: 'speed_boost' },
+  { id: 'mushroom', emoji: '🍄', name: 'Mantar', description: '🍄 = ⚡ + 40 (10 sn)', weight: 8, durationMs: 10000, points: 0, effect: 'speed_boost' },
+  { id: 'target', emoji: '🎯', name: 'Hedef', description: '🎯 = ⭐ + 30', weight: 10, durationMs: 0, points: 30, effect: null },
 ];
 
-// —— KÖTÜ OBJELER (emoji, isim, ağırlık, süre ms, hız çarpanı) ——
+// —— KÖTÜ OBJELER (emoji, isim, description, ağırlık, süre, hız çarpanı, puan cezası) ——
 export const BAD_ITEMS: BadItemDef[] = [
-  { id: 'turtle', emoji: '🐢', name: 'Kaplumbağa', weight: 10, durationMs: 0, speedMultiplier: 0.5 },
-  { id: 'skull', emoji: '💀', name: 'Kuru Kafa', weight: 5, durationMs: 2000, speedMultiplier: 0.1 },
-  { id: 'lemon', emoji: '🍋', name: 'Limon', weight: 8, durationMs: 2000, speedMultiplier: 0.4 },
-  { id: 'onion', emoji: '🧅', name: 'Soğan', weight: 6, durationMs: 1500, speedMultiplier: 0.3 },
-  { id: 'clown', emoji: '🎪', name: 'Palyaço', weight: 5, durationMs: 2000, speedMultiplier: 0.6 },
-  { id: 'spider', emoji: '🕷️', name: 'Örümcek', weight: 6, durationMs: 1500, speedMultiplier: 0.35 },
-];
-
-// —— TUZAKLAR (taş, ağaç – çarpınca düş) ——
-export const OBSTACLE_DEFS: ObstacleDef[] = [
-  { id: 'stone', weight: 50 },
-  { id: 'tree', weight: 50 },
+  { id: 'turtle', emoji: '🐢', name: 'Kaplumbağa', description: '🐢 = ⚡ ÷ 2', weight: 10, durationMs: 0, speedMultiplier: 0.5 },
+  { id: 'skull', emoji: '💀', name: 'Kuru Kafa', description: '💀 = ⚡ × 0.1', weight: 5, durationMs: 2000, speedMultiplier: 0.1 },
+  { id: 'lemon', emoji: '🍋', name: 'Limon', description: '🍋 = ⚡ × 0.4', weight: 8, durationMs: 2000, speedMultiplier: 0.4 },
+  { id: 'onion', emoji: '🧅', name: 'Soğan', description: '🧅 = ⚡ × 0.3', weight: 6, durationMs: 1500, speedMultiplier: 0.3 },
+  { id: 'clown', emoji: '🎪', name: 'Palyaço', description: '🎪 = ⚡ × 0.6', weight: 5, durationMs: 2000, speedMultiplier: 0.6 },
+  { id: 'spider', emoji: '🕷️', name: 'Örümcek', description: '🕷️ = ⚡ × 0.35', weight: 6, durationMs: 1500, speedMultiplier: 0.35 },
+  { id: 'bomb', emoji: '💣', name: 'Bomba', description: '💣 = ⚡↓ ⋀ ⭐↓', weight: 6, durationMs: 0, speedMultiplier: 0.25, scorePenalty: -80 },
 ];
 
 // Spawn aralığı (px) – ne kadar sık slot açılır (büyük = daha seyrek)
@@ -88,10 +78,14 @@ export const SPAWN_INTERVAL_PX = 580;
 // Sahne şansı: her slot'ta bir şey çıkma olasılığı (0–1). Bazen hiç çıkmaz.
 export const SPAWN_SCENE_CHANCE = 0.55;
 
-// Spawn şansları: çıktıysa hangi kategoriden (toplam 100)
-export const SPAWN_CHANCE_OBSTACLE = 45;  // %45 tuzak (taş/ağaç)
+// Spawn şansları: çıktıysa hangi kategoriden (toplam 100) – oyuna göre değiştirilebilir
+export const SPAWN_CHANCE_OBSTACLE = 45;  // %45 tuzak (taş/ağaç/kar tepesi/çalı vb.)
 export const SPAWN_CHANCE_GOOD = 35;       // %35 iyi (emoji)
 export const SPAWN_CHANCE_BAD = 20;       // %20 kötü (emoji)
+
+// Engel yan yana: aynı slot'ta 2 veya 3 engel çıkma şansı (0–1)
+export const OBSTACLE_SIDE_BY_SIDE_2_CHANCE = 0.22; // %22 iki engel yan yana
+export const OBSTACLE_SIDE_BY_SIDE_3_CHANCE = 0.06; // %6 üç engel yan yana
 
 // Etki sabitleri
 export const SUPER_SPEED_MULTIPLIER = 2;
