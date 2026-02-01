@@ -52,6 +52,21 @@ export function pickRandomDistance(theme: ScenarioTheme, level: number = 1): num
   return minM + Math.floor(Math.random() * range);
 }
 
+/** Tüm senaryolar için seviyeye göre mesafe aralığı (km); ilk ekran hint’i için */
+export function getMissionDistanceRangeKm(level: number = 1): { minKm: number; maxKm: number } {
+  const extra = (level - 1) * METERS_PER_LEVEL;
+  let minM = Infinity;
+  let maxM = -Infinity;
+  for (const theme of SCENARIO_THEMES) {
+    minM = Math.min(minM, theme.distanceMinM + extra);
+    maxM = Math.max(maxM, theme.distanceMaxM + extra);
+  }
+  return {
+    minKm: Math.round(minM / 1000),
+    maxKm: Math.round(maxM / 1000),
+  };
+}
+
 export function generatePathSegments(
   params: PathGenParams,
   targetMeters: number

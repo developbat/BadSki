@@ -8,7 +8,7 @@ const en: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Downhill Ski',
   entry_getMission: 'Get Mission',
-  entry_getMissionHint: 'Scenarios • 10–13 km',
+  entry_getMissionHint: 'Scenarios • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Free Ski',
   entry_freeSkiRecord: 'Record: {{distance}}',
   entry_upgrades: 'Upgrades',
@@ -51,13 +51,17 @@ const en: TranslationKeys = {
   game_rocket: 'Rocket',
   upgrades_watchAdForPoints: 'Watch ad – earn points',
   upgrades_watchAdToUnlock: 'Watch ad to unlock',
+  upgrades_goodSpawnTitle: 'Good item frequency',
+  upgrades_goodSpawnDesc: 'More stars, rockets, shields on the track. +2% per level (permanent).',
+  upgrades_badSpawnTitle: 'Less bad items',
+  upgrades_badSpawnDesc: 'Fewer turtles, skulls, bombs. -2% per level (permanent).',
 };
 
 const tr: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Yokuş Aşağı Kayak',
   entry_getMission: 'Görev Getir',
-  entry_getMissionHint: 'Senaryolar • 10–13 km',
+  entry_getMissionHint: 'Senaryolar • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Serbest Kay',
   entry_freeSkiRecord: 'Rekor: {{distance}}',
   entry_upgrades: 'Yükseltmeler',
@@ -100,13 +104,17 @@ const tr: TranslationKeys = {
   game_rocket: 'Roket',
   upgrades_watchAdForPoints: 'Reklam izle – puan kazan',
   upgrades_watchAdToUnlock: 'Reklam izle ile aç',
+  upgrades_goodSpawnTitle: 'İyi nesne sıklığı',
+  upgrades_goodSpawnDesc: 'Pistte daha çok yıldız, roket, kalkan. Seviye başı +2% (kalıcı).',
+  upgrades_badSpawnTitle: 'Daha az kötü nesne',
+  upgrades_badSpawnDesc: 'Daha az kaplumbağa, kuru kafa, bomba. Seviye başı -2% (kalıcı).',
 };
 
 const de: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Skifahren bergab',
   entry_getMission: 'Mission holen',
-  entry_getMissionHint: 'Szenarien • 10–13 km',
+  entry_getMissionHint: 'Szenarien • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Freies Fahren',
   entry_freeSkiRecord: 'Rekord: {{distance}}',
   entry_upgrades: 'Upgrades',
@@ -149,13 +157,17 @@ const de: TranslationKeys = {
   game_rocket: 'Rakete',
   upgrades_watchAdForPoints: 'Werbung ansehen – Punkte verdienen',
   upgrades_watchAdToUnlock: 'Werbung ansehen zum Freischalten',
+  upgrades_goodSpawnTitle: 'Gute Objekt-Häufigkeit',
+  upgrades_goodSpawnDesc: 'Mehr Sterne, Raketen, Schilde. +2% pro Stufe (dauerhaft).',
+  upgrades_badSpawnTitle: 'Weniger schlechte Objekte',
+  upgrades_badSpawnDesc: 'Weniger Schildkröten, Totenköpfe, Bomben. -2% pro Stufe (dauerhaft).',
 };
 
 const fr: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Ski descente',
   entry_getMission: 'Obtenir une mission',
-  entry_getMissionHint: 'Scénarios • 10–13 km',
+  entry_getMissionHint: 'Scénarios • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Ski libre',
   entry_freeSkiRecord: 'Record : {{distance}}',
   entry_upgrades: 'Améliorations',
@@ -198,13 +210,17 @@ const fr: TranslationKeys = {
   game_rocket: 'Fusée',
   upgrades_watchAdForPoints: 'Voir la pub – gagner des points',
   upgrades_watchAdToUnlock: 'Voir la pub pour débloquer',
+  upgrades_goodSpawnTitle: 'Fréquence objets positifs',
+  upgrades_goodSpawnDesc: 'Plus d’étoiles, fusées, boucliers. +2% par niveau (permanent).',
+  upgrades_badSpawnTitle: 'Moins d’objets négatifs',
+  upgrades_badSpawnDesc: 'Moins de tortues, crânes, bombes. -2% par niveau (permanent).',
 };
 
 const pt: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Esqui em descida',
   entry_getMission: 'Obter missão',
-  entry_getMissionHint: 'Cenários • 10–13 km',
+  entry_getMissionHint: 'Cenários • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Esqui livre',
   entry_freeSkiRecord: 'Recorde: {{distance}}',
   entry_upgrades: 'Melhorias',
@@ -246,6 +262,10 @@ const pt: TranslationKeys = {
   upgrades_pointsProductDesc: 'Assista a um anúncio recompensado para ganhar pontos.',
   upgrades_watchAdForPoints: 'Ver anúncio – ganhar pontos',
   upgrades_watchAdToUnlock: 'Ver anúncio para desbloquear',
+  upgrades_goodSpawnTitle: 'Frequência de itens bons',
+  upgrades_goodSpawnDesc: 'Mais estrelas, foguetes, escudos. +2% por nível (permanente).',
+  upgrades_badSpawnTitle: 'Menos itens ruins',
+  upgrades_badSpawnDesc: 'Menos tartarugas, caveiras, bombas. -2% por nível (permanente).',
   game_rocket: 'Foguete',
 };
 
@@ -253,7 +273,7 @@ const es: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Esquí descendente',
   entry_getMission: 'Obtener misión',
-  entry_getMissionHint: 'Escenarios • 10–13 km',
+  entry_getMissionHint: 'Escenarios • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'Esquí libre',
   entry_freeSkiRecord: 'Récord: {{distance}}',
   entry_upgrades: 'Mejoras',
@@ -295,6 +315,10 @@ const es: TranslationKeys = {
   upgrades_pointsProductDesc: 'Mira un anuncio recompensado para ganar puntos.',
   upgrades_watchAdForPoints: 'Ver anuncio – ganar puntos',
   upgrades_watchAdToUnlock: 'Ver anuncio para desbloquear',
+  upgrades_goodSpawnTitle: 'Frecuencia de objetos buenos',
+  upgrades_goodSpawnDesc: 'Más estrellas, cohetes, escudos. +2% por nivel (permanente).',
+  upgrades_badSpawnTitle: 'Menos objetos malos',
+  upgrades_badSpawnDesc: 'Menos tortugas, calaveras, bombas. -2% por nivel (permanente).',
   game_rocket: 'Cohete',
 };
 
@@ -302,7 +326,7 @@ const ru: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'Горные лыжи',
   entry_getMission: 'Получить миссию',
-  entry_getMissionHint: 'Сценарии • 10–13 км',
+  entry_getMissionHint: 'Сценарии • {{minKm}}–{{maxKm}} км',
   entry_freeSki: 'Свободный спуск',
   entry_freeSkiRecord: 'Рекорд: {{distance}}',
   entry_upgrades: 'Улучшения',
@@ -344,6 +368,10 @@ const ru: TranslationKeys = {
   upgrades_pointsProductDesc: 'Посмотри рекламу и получи очки.',
   upgrades_watchAdForPoints: 'Смотреть рекламу – получить очки',
   upgrades_watchAdToUnlock: 'Смотреть рекламу для разблокировки',
+  upgrades_goodSpawnTitle: 'Частота хороших предметов',
+  upgrades_goodSpawnDesc: 'Больше звёзд, ракет, щитов. +2% за уровень (постоянно).',
+  upgrades_badSpawnTitle: 'Меньше плохих предметов',
+  upgrades_badSpawnDesc: 'Меньше черепах, черепов, бомб. -2% за уровень (постоянно).',
   game_rocket: 'Ракета',
 };
 
@@ -351,7 +379,7 @@ const ja: TranslationKeys = {
   appTitle: 'Bad Ski',
   entry_subtitle: 'ダウンヒルスキー',
   entry_getMission: 'ミッションを取得',
-  entry_getMissionHint: 'シナリオ • 10–13 km',
+  entry_getMissionHint: 'シナリオ • {{minKm}}–{{maxKm}} km',
   entry_freeSki: 'フリースキー',
   entry_freeSkiRecord: '記録: {{distance}}',
   entry_upgrades: 'アップグレード',
@@ -393,6 +421,10 @@ const ja: TranslationKeys = {
   upgrades_pointsProductDesc: 'リワード広告を見てポイントを獲得。',
   upgrades_watchAdForPoints: '広告を見る – ポイント獲得',
   upgrades_watchAdToUnlock: '広告を見てアンロック',
+  upgrades_goodSpawnTitle: '良いアイテム出現率',
+  upgrades_goodSpawnDesc: '星・ロケット・盾が増える。レベルごとに+2%（永続）。',
+  upgrades_badSpawnTitle: '悪いアイテム減',
+  upgrades_badSpawnDesc: 'カメ・ドクロ・爆弾が減る。レベルごとに-2%（永続）。',
   game_rocket: 'ロケット',
 };
 

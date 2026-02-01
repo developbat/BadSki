@@ -81,10 +81,10 @@ export const SPAWN_INTERVAL_PX = 580;
 // Sahne şansı: her slot'ta bir şey çıkma olasılığı (0–1). Bazen hiç çıkmaz.
 export const SPAWN_SCENE_CHANCE = 0.55;
 
-// Spawn şansları: çıktıysa hangi kategoriden (toplam 100) – oyuna göre değiştirilebilir
-export const SPAWN_CHANCE_OBSTACLE = 45;  // %45 tuzak (taş/ağaç/kar tepesi/çalı vb.)
-export const SPAWN_CHANCE_GOOD = 35;       // %35 iyi (emoji)
-export const SPAWN_CHANCE_BAD = 20;       // %20 kötü (emoji)
+// Spawn şansları (taban, Lv1): toplam 100; oyunda level + yükseltmeyle değişir
+export const BASE_SPAWN_CHANCE_OBSTACLE = 52;
+export const BASE_SPAWN_CHANCE_GOOD = 32;
+export const BASE_SPAWN_CHANCE_BAD = 16;
 
 // Engel yan yana: aynı slot'ta 2 veya 3 engel çıkma şansı (0–1)
 export const OBSTACLE_SIDE_BY_SIDE_2_CHANCE = 0.22; // %22 iki engel yan yana

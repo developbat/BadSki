@@ -1,11 +1,12 @@
 /**
  * Mini-map: güzergah (path) ve mevcut konum.
- * Mission varken sol üstte gösterilir. Path dışındayken kırmızı yanıp söner.
+ * Mission varken veya serbest kayda prosedürel path ile sol üstte gösterilir. Path dışındayken kırmızı yanıp söner.
  */
 
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import type { Mission } from '../constants/missions';
+import type { PathPoint } from '../constants/missions';
 import { getPathCenterXPx } from '../constants/missions';
 
 /** Dik mini harita: genişlik dar (path sola-sağa), yükseklik gidiş yönü (aşağı=başlangıç, yukarı=hedef) */
@@ -13,15 +14,26 @@ const MAP_WIDTH = 44;
 const MAP_HEIGHT = 130;
 
 type Props = {
-  mission: Mission;
+  mission: Mission | null;
   distanceTraveledMeters: number;
   isOffPath?: boolean;
-  /** Çok dilli senaryo adı (t('scenario_' + mission.scenarioId)) */
+  /** Çok dilli senaryo adı (t('scenario_' + mission.scenarioId)) veya serbest için etiket */
   scenarioLabel?: string;
+  /** Serbest kayda: prosedürel path noktaları (mission null iken kullanılır) */
+  freeSkiPathPoints?: PathPoint[];
+  /** Serbest kayda: toplam mesafe (m) – ilerleme çubuğu için */
+  freeSkiTotalMeters?: number;
 };
 
-function MiniMap({ mission, distanceTraveledMeters, isOffPath = false, scenarioLabel }: Props): React.JSX.Element {
-  const label = scenarioLabel ?? mission.scenarioId;
+function MiniMap({
+  mission,
+  distanceTraveledMeters,
+  isOffPath = false,
+  scenarioLabel,
+  freeSkiPathPoints,
+  freeSkiTotalMeters,
+}: Props): React.JSX.Element {
+  const label = scenarioLabel ?? (mission?.scenarioId ?? '');
   const flashAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -43,9 +55,9 @@ function MiniMap({ mission, distanceTraveledMeters, isOffPath = false, scenarioL
     inputRange: [0, 1],
     outputRange: ['rgba(15, 23, 42, 0.45)', 'rgba(220, 38, 38, 0.5)'],
   });
-  const totalM = mission.distanceMeters;
+  const totalM = mission?.distanceMeters ?? freeSkiTotalMeters ?? 0;
   const progress = totalM <= 0 ? 0 : Math.min(1, distanceTraveledMeters / totalM);
-  const points = mission.points;
+  const points = (mission?.points?.length ? mission.points : freeSkiPathPoints) ?? [];
   if (points.length < 2) {
     return (
       <Animated.View

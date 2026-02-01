@@ -47,6 +47,8 @@ export const OBSTACLE_LIST: ObstacleEntry[] = [
   { id: 'tree-big1', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
   { id: 'tree-big2', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
   { id: 'tree-big3', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
+  /** Yol kenarı (soft wall) – resim yok, ObstacleView’da View ile çizilir */
+  { id: 'snow-bank', weight: 0, width: 72, height: 64, description: 'Kar yığını' },
 ];
 
 export function getObstacleById(id: string): ObstacleEntry | undefined {

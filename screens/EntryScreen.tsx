@@ -16,6 +16,7 @@ import {
   createRandomMission,
   pickRandomThemeForRoll,
   SCENARIO_THEMES,
+  getMissionDistanceRangeKm,
   type Mission,
   type PathPoint,
 } from '../constants/missions';
@@ -364,13 +365,16 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
       </View>
       <Text style={styles.title}>{t('appTitle')}</Text>
       <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
-      <TouchableOpacity
-        style={[styles.button, styles.buttonPrimary]}
-        onPress={handleGetMission}
-        activeOpacity={0.8}>
-        <Text style={styles.buttonText}>{t('entry_getMission')}</Text>
-        <Text style={styles.buttonHint}>{t('entry_getMissionHint')}</Text>
-      </TouchableOpacity>
+      <View style={styles.getMissionWrap}>
+        <Text style={styles.levelBadge}>Lv.{level}</Text>
+        <TouchableOpacity
+          style={[styles.button, styles.buttonPrimary]}
+          onPress={handleGetMission}
+          activeOpacity={0.8}>
+          <Text style={styles.buttonText}>{t('entry_getMission')}</Text>
+          <Text style={styles.buttonHint}>{t('entry_getMissionHint', getMissionDistanceRangeKm(level))}</Text>
+        </TouchableOpacity>
+      </View>
       <TouchableOpacity
         style={[styles.button, styles.buttonSecondary]}
         onPress={() => onStartGame(null)}
@@ -496,6 +500,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#94a3b8',
     marginBottom: 8,
+  },
+  getMissionWrap: {
+    alignItems: 'center',
+  },
+  levelBadge: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginBottom: 6,
+    letterSpacing: 0.5,
   },
   button: {
     paddingVertical: 16,

@@ -2,7 +2,7 @@
  * Oyun ekranı - Hız fiziği (tab tab hızlanma), sınırsız sahne akışı, hız göstergesi
  */
 
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import {
   View,
   Image,
@@ -22,9 +22,9 @@ import {
   BAD_ITEMS,
   SPAWN_INTERVAL_PX,
   SPAWN_SCENE_CHANCE,
-  SPAWN_CHANCE_OBSTACLE,
-  SPAWN_CHANCE_GOOD,
-  SPAWN_CHANCE_BAD,
+  BASE_SPAWN_CHANCE_OBSTACLE,
+  BASE_SPAWN_CHANCE_GOOD,
+  BASE_SPAWN_CHANCE_BAD,
   OBSTACLE_SIDE_BY_SIDE_2_CHANCE,
   OBSTACLE_SIDE_BY_SIDE_3_CHANCE,
   SUPER_SPEED_MULTIPLIER,
@@ -33,6 +33,9 @@ import {
   type BadItemId,
 } from '../constants/items';
 import { OBSTACLE_LIST, getObstacleById } from '../constants/obstacles';
+
+/** Kar yığını sadece yol sınırında; yol içi engeller ağaç/kaya. */
+const OBSTACLE_LIST_FOR_SPAWN = OBSTACLE_LIST.filter(o => o.id !== 'snow-bank');
 import {
   pickThoughtEmoji,
   EMOTIONS_HAPPY,
@@ -62,7 +65,13 @@ import {
   OFF_PATH_THRESHOLD_PX,
   SPAWN_CHANCE_OBSTACLE_OFF_PATH,
 } from '../constants/missions';
-import { ROCKET_DURATION_MS } from '../constants/upgrades';
+import {
+  getProceduralPathCenterWorldX,
+  getTrackHalfWidthPx,
+  getTrackBoundsAtScroll,
+  getProceduralPathPoints,
+} from '../constants/trackPath';
+import { ROCKET_DURATION_MS, MAX_GOOD_SPAWN_LEVEL, MAX_BAD_SPAWN_LEVEL } from '../constants/upgrades';
 import { useI18n } from '../i18n';
 
 const CLUMSY_DURATION_MS = 500;
@@ -74,6 +83,7 @@ const ACCELERATE_DURATION_MS = 400;
 const BASE_JUMP_DURATION_MS = 700; // Yükseltmeyle artar (initialJumpDurationMs)
 const SEGMENT_HEIGHT = 600;
 const DEFAULT_MAX_SPEED = 50; // Oyun birimi; yükseltmeyle artar
+const MIN_SPEED = 5; // Minimum hız (km/s); kar kümelerinde ve diğer düşüşlerde bu değerin altına inmez
 // Hızlanma: basılı tutma süresi ile ibre dolar; basılıyken bu aralıkla hız eklenir
 const SCROLL_FACTOR = 0.18;
 const ACCEL_RAMP_MS = 260; // Aynı sağa/sola gibi; bu sürede ibre 0→1 dolar
@@ -82,15 +92,23 @@ const DASH_WIDTH = 18;
 const DASH_GAP = 14;
 const WAVE_AMP = 5;
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
-// Dönüş: basılı tutulunca daha keskin sağa/sola (tilt ve drift artırıldı, ramp hızlandı)
+const TRACK_HALF_WIDTH_PX = getTrackHalfWidthPx(SCREEN_WIDTH);
+const BOUNDARY_SPAWN_INTERVAL_PX = 140;
+/** Karakter ve engeller 3’te 1 oranında küçültülür; yol ekrana sığar, daha rahat kaçış. */
+const GAME_VISUAL_SCALE = 1 / 3;
+/** Zıplarken karakter hafif büyür (yukarıdan bakışta yaklaşma hissi), +20% */
+const JUMP_SCALE_FACTOR = 1.2;
 const STAGE_TILT_PX = 44;
 const TILT_RAMP_MS = 260;
 const TURN_SLOWDOWN_PCT = 0.1;
 const HORIZONTAL_DRIFT_FACTOR = 0.038;
-const CENTER_RETURN_SPEED = 6;
 const SKIER_HIT_Y = SCREEN_HEIGHT - 220;
 const SKIER_HIT_RANGE_Y = 55;
 const SKIER_HIT_RANGE_X = 50;
+const SKIER_HIT_RANGE_X_SCALED = SKIER_HIT_RANGE_X * GAME_VISUAL_SCALE;
+const SKIER_HIT_RANGE_Y_SCALED = SKIER_HIT_RANGE_Y * GAME_VISUAL_SCALE;
+/** Küçültmeden sonra çarpma/toplama geç tetikleniyordu: hit box aşağı uzatılıyor, üzerinden geçer geçmez algılansın */
+const HIT_LEAD_Y_PX = 50;
 
 type SpawnKind = 'obstacle' | 'good' | 'bad';
 type Spawn = {
@@ -119,6 +137,10 @@ type GameScreenProps = {
   mission: Mission | null;
   totalEarned?: number;
   level?: number;
+  /** İyi nesne sıklığı yükseltmesi (0..5 → +0..10%) */
+  goodSpawnLevel?: number;
+  /** Kötü nesne azaltma yükseltmesi (0..5 → -0..10%) */
+  badSpawnLevel?: number;
   initialMaxSpeed?: number;
   initialJumpDurationMs?: number;
   initialRocketCount?: number;
@@ -130,10 +152,39 @@ type GameScreenProps = {
   onUseExtraLife?: () => void;
 };
 
+/** Oyun / seviyeye göre spawn oranları: iyi + kötü + engel = 100; level artınca engel artar. */
+function getSpawnChances(
+  level: number,
+  goodSpawnLevel: number,
+  badSpawnLevel: number
+): { obstacle: number; good: number; bad: number } {
+  const goodBonus = Math.min(goodSpawnLevel, MAX_GOOD_SPAWN_LEVEL) * 2;
+  const badBonus = Math.min(badSpawnLevel, MAX_BAD_SPAWN_LEVEL) * 2;
+  const levelPenalty = Math.max(0, level - 1);
+  let good = Math.max(0, Math.min(100, BASE_SPAWN_CHANCE_GOOD - levelPenalty + goodBonus));
+  let bad = Math.max(0, Math.min(100, BASE_SPAWN_CHANCE_BAD - levelPenalty - badBonus));
+  let obstacle = 100 - good - bad;
+  if (obstacle < 0) {
+    obstacle = 0;
+    const total = good + bad;
+    if (total > 0) {
+      good = Math.round((good / total) * 100);
+      bad = Math.max(0, 100 - good);
+    }
+  } else if (obstacle > 100) {
+    obstacle = 100;
+    good = 0;
+    bad = 0;
+  }
+  return { obstacle, good, bad };
+}
+
 function GameScreen({
   mission,
   totalEarned = 0,
   level = 1,
+  goodSpawnLevel = 0,
+  badSpawnLevel = 0,
   initialMaxSpeed = DEFAULT_MAX_SPEED,
   initialJumpDurationMs = BASE_JUMP_DURATION_MS,
   initialRocketCount = 0,
@@ -158,9 +209,41 @@ function GameScreen({
   const [rocketFlash, setRocketFlash] = useState(false);
   const [shieldFlash, setShieldFlash] = useState(false);
   const [distanceTraveledMeters, setDistanceTraveledMeters] = useState(0);
+  const [scrollForBoundary, setScrollForBoundary] = useState(0);
+  const [totalScrollForBoundary, setTotalScrollForBoundary] = useState(0);
+  const freeSkiPathPoints = useMemo(
+    () =>
+      getProceduralPathPoints(
+        distanceTraveledMeters / SCROLL_TO_METERS + 2000,
+        120,
+        SCREEN_WIDTH
+      ),
+    [distanceTraveledMeters]
+  );
+  const freeSkiTotalMeters = distanceTraveledMeters + 500;
+  const boundaryLineSegments = useMemo(() => {
+    const segs: { worldY: number; leftX: number; rightX: number }[] = [];
+    const step = 36;
+    const yStart = -scrollForBoundary;
+    const yEnd = -scrollForBoundary + SCREEN_HEIGHT + 180;
+    for (let worldY = yStart; worldY < yEnd; worldY += step) {
+      const scrollPos = totalScrollForBoundary - scrollForBoundary + worldY;
+      const pathCenterX =
+        mission && mission.points.length > 0
+          ? SCREEN_WIDTH / 2 + getPathCenterXPx(scrollPos * SCROLL_TO_METERS, mission.points)
+          : getProceduralPathCenterWorldX(scrollPos, SCREEN_WIDTH);
+      segs.push({
+        worldY,
+        leftX: pathCenterX - TRACK_HALF_WIDTH_PX,
+        rightX: pathCenterX + TRACK_HALF_WIDTH_PX,
+      });
+    }
+    return segs;
+  }, [scrollForBoundary, totalScrollForBoundary, mission]);
   const [isOffPath, setIsOffPath] = useState(false);
   const [pathTurnAhead, setPathTurnAhead] = useState<'left' | 'right' | null>(null);
-  const [speed, setSpeed] = useState(0);
+  const [boundaryHitAt, setBoundaryHitAt] = useState(0);
+  const [speed, setSpeed] = useState(MIN_SPEED);
   const [accelHold, setAccelHold] = useState(0); // 0..1, basılı tutma ile dolar
   const hasCenterPressed = useRef(false);
   const speedRef = useRef(0);
@@ -183,6 +266,7 @@ function GameScreen({
   const spawnsRef = useRef<Spawn[]>([]);
   const spawnIdRef = useRef(0);
   const lastSpawnedScrollRef = useRef(0);
+  const lastBoundarySpawnedRef = useRef(0);
   const totalScrollRef = useRef(0);
   const stateRef = useRef(state);
   const lastHitWasTreeRef = useRef(false); // Ağaç → fall-florr-back, kaya → fall-florr
@@ -365,25 +449,25 @@ function GameScreen({
         speedBoost: Math.max(0, Math.ceil((speedBoostUntilRef.current - now) / 1000)),
       });
       const d = totalScrollRef.current * SCROLL_TO_METERS;
-      if (mission) {
-        setDistanceTraveledMeters(d);
-        if (mission.points.length > 0) {
-          const pathCenterX = getPathCenterXPx(d, mission.points);
-          const skierX = skierOffsetXRef.current + worldPanXRef.current;
-          setIsOffPath(Math.abs(skierX - pathCenterX) > OFF_PATH_THRESHOLD_PX);
-          setPathTurnAhead(getPathTurnAhead(d, mission.points));
-        } else {
-          setIsOffPath(false);
-          setPathTurnAhead(null);
-        }
+      setDistanceTraveledMeters(d);
+      setScrollForBoundary(scrollOffsetRef.current);
+      setTotalScrollForBoundary(totalScrollRef.current);
+      if (mission && mission.points.length > 0) {
+        setIsOffPath(Math.abs(skierOffsetXRef.current) > OFF_PATH_THRESHOLD_PX);
+        setPathTurnAhead(getPathTurnAhead(d, mission.points));
       } else {
-        setDistanceTraveledMeters(d);
-        setIsOffPath(false);
+        setIsOffPath(Math.abs(skierOffsetXRef.current) > OFF_PATH_THRESHOLD_PX);
         setPathTurnAhead(null);
       }
     }, 400);
     return () => clearInterval(id);
   }, [mission]);
+
+  useEffect(() => {
+    if (boundaryHitAt <= 0) return;
+    const t = setTimeout(() => setBoundaryHitAt(0), 2000);
+    return () => clearTimeout(t);
+  }, [boundaryHitAt]);
 
   // Düşünce balonu: bir şey olmadan emoji değişmez. Her durumda 1 emoji seçilir, o kalır.
   // Öncelik: panik > korku > mutsuz > mutlu > normale dönüş > tedirgin (sadece normal sürüşte) > kayak.
@@ -523,9 +607,12 @@ function GameScreen({
       const spd = speedRef.current;
       const disabled = isDisabledRef.current;
       const st = stateRef.current;
-      // Zıplarken frame akmaya ve hız devam eder; sadece clumsy/fall'da dünya durur
+      // Zıplarken frame akmaya ve hız devam eder; clumsy/fall veya hedefe ulaşınca dünya durur
       const worldPaused =
-        st === 'clumsy' || st === 'fall-florr' || st === 'fall-florr-back';
+        gameWonRef.current ||
+        st === 'clumsy' ||
+        st === 'fall-florr' ||
+        st === 'fall-florr-back';
       let tiltPx = 0;
       if (st === 'left-ski' && leftPressedAtRef.current > 0) {
         const elapsed = now - leftPressedAtRef.current;
@@ -543,7 +630,7 @@ function GameScreen({
         rightTiltRef.current = 0;
       }
       tiltAmountRef.current = tiltPx;
-      stageTranslateX.setValue(tiltPx);
+      stageTranslateX.setValue(0);
       const tiltAmount = Math.max(leftTiltRef.current, rightTiltRef.current);
       const turnFactor = 1 - tiltAmount * TURN_SLOWDOWN_PCT;
 
@@ -552,7 +639,14 @@ function GameScreen({
       const effectiveSpeed =
         spd * (superSpeed ? SUPER_SPEED_MULTIPLIER : 1) * badMult * turnFactor;
 
-      // Yatay kayma: açı arttıkça daha çok yan gider (tam bası ≈ ekrandan çıkabilecek kadar)
+      const totalScroll = totalScrollRef.current;
+      const pathCenterWorldX =
+        mission && mission.points.length > 0
+          ? SCREEN_WIDTH / 2 + getPathCenterXPx(totalScroll * SCROLL_TO_METERS, mission.points)
+          : getProceduralPathCenterWorldX(totalScroll, SCREEN_WIDTH);
+      worldPanXRef.current = SCREEN_WIDTH / 2 - pathCenterWorldX;
+
+      // Yatay kayma: sadece basılıyken hareket; bırakınca ortaya dönme yok (ağaçtan kaçarken yerinde kal)
       if (!disabled) {
         const driftMultiplier = 1 + tiltAmount * 0.9;
         const driftPerFrame = effectiveSpeed * HORIZONTAL_DRIFT_FACTOR * driftMultiplier;
@@ -562,26 +656,12 @@ function GameScreen({
           skierOffsetXRef.current -= driftPerFrame;
         } else if (driftPerFrame > 0 && rightHeld) {
           skierOffsetXRef.current += driftPerFrame;
-        } else {
-          // Hız yok veya tuş bırakıldı: ortaya animatik dönüş
-          const cur = skierOffsetXRef.current;
-          if (Math.abs(cur) > 0.5) {
-            const step = Math.min(CENTER_RETURN_SPEED, Math.abs(cur));
-            skierOffsetXRef.current = cur > 0 ? cur - step : cur + step;
-            worldPanXRef.current += cur > 0 ? -step : step;
-          } else if (Math.abs(worldPanXRef.current) > 0.5) {
-            // Ortaya dönüş bitti: pan'ı dünya koordinatına yedir, birikmeyi önle
-            const pan = worldPanXRef.current;
-            worldPanXRef.current = 0;
-            worldPanXAnim.setValue(0);
-            const shifted = spawnsRef.current.map(s => ({ ...s, worldX: s.worldX + pan }));
-            spawnsRef.current = shifted;
-            setSpawns(shifted);
-          }
         }
-        skierOffsetXAnim.setValue(skierOffsetXRef.current);
-        worldPanXAnim.setValue(worldPanXRef.current);
       }
+      const clamped = Math.max(-TRACK_HALF_WIDTH_PX, Math.min(TRACK_HALF_WIDTH_PX, skierOffsetXRef.current));
+      skierOffsetXRef.current = clamped;
+      skierOffsetXAnim.setValue(skierOffsetXRef.current);
+      worldPanXAnim.setValue(worldPanXRef.current);
 
       // Kar parçacıkları: sadece pozisyon güncelle, ekran dışına çıkanı karşı kenardan al
       if (particleAnimsInitializedRef.current && particleXYRef.current.x.length === SNOW_PARTICLE_COUNT) {
@@ -625,10 +705,9 @@ function GameScreen({
       }
 
       const scrollNow = scrollOffsetRef.current;
-      const totalScroll = totalScrollRef.current;
 
       if (mission && !gameWonRef.current) {
-        const distanceMeters = totalScroll * SCROLL_TO_METERS;
+        const distanceMeters = totalScrollRef.current * SCROLL_TO_METERS;
         if (distanceMeters >= mission.distanceMeters) {
           gameWonRef.current = true;
           setGameWon(true);
@@ -642,43 +721,47 @@ function GameScreen({
         }
       }
 
-      // Spawn: path dışındaysa daha çok engel
+      // Path merkezi spawn Y'de (yol sınırları içinde spawn)
+      const spawnWorldY = scrollNow - SCREEN_HEIGHT - 320 + Math.random() * 200;
+      const pathCenterAtSpawn =
+        mission && mission.points.length > 0
+          ? SCREEN_WIDTH / 2 + getPathCenterXPx(spawnWorldY * SCROLL_TO_METERS, mission.points)
+          : getProceduralPathCenterWorldX(spawnWorldY, SCREEN_WIDTH);
+      const trackHalf = getTrackHalfWidthPx(SCREEN_WIDTH);
+      const spawnMargin = trackHalf * 0.88;
+      const randomInTrack = () => pathCenterAtSpawn + (Math.random() - 0.5) * 2 * spawnMargin;
+
+      const { obstacle: spawnObstacleChance, good: spawnGoodChance, bad: spawnBadChance } =
+        getSpawnChances(level, goodSpawnLevel, badSpawnLevel);
       const obstacleChance =
         mission && mission.points.length > 0
-          ? (() => {
-              const distanceMeters = totalScroll * SCROLL_TO_METERS;
-              const pathCenterX = getPathCenterXPx(distanceMeters, mission.points);
-              const skierOffsetFromPath =
-                skierOffsetXRef.current + worldPanXRef.current - pathCenterX;
-              return Math.abs(skierOffsetFromPath) > OFF_PATH_THRESHOLD_PX
-                ? SPAWN_CHANCE_OBSTACLE_OFF_PATH
-                : SPAWN_CHANCE_OBSTACLE;
-            })()
-          : SPAWN_CHANCE_OBSTACLE;
+          ? (Math.abs(skierOffsetXRef.current) > OFF_PATH_THRESHOLD_PX
+              ? SPAWN_CHANCE_OBSTACLE_OFF_PATH
+              : spawnObstacleChance)
+          : spawnObstacleChance;
+      const remaining = 100 - obstacleChance;
+      const goodRatio = spawnGoodChance + spawnBadChance > 0 ? spawnGoodChance / (spawnGoodChance + spawnBadChance) : 0.5;
+      const goodThreshold = obstacleChance + (obstacleChance === spawnObstacleChance ? spawnGoodChance : remaining * goodRatio);
 
       if (
         !worldPaused &&
         spd > 0 &&
-        totalScroll - lastSpawnedScrollRef.current > SPAWN_INTERVAL_PX
+        totalScrollRef.current - lastSpawnedScrollRef.current > SPAWN_INTERVAL_PX
       ) {
-        lastSpawnedScrollRef.current = totalScroll;
+        lastSpawnedScrollRef.current = totalScrollRef.current;
         if (Math.random() < SPAWN_SCENE_CHANCE) {
-          const worldY =
-            scrollNow - SCREEN_HEIGHT - 320 + Math.random() * 200;
+          const worldY = spawnWorldY;
           const roll = Math.random() * 100;
           if (roll < obstacleChance) {
-            // Engel: 1, 2 veya 3 yan yana (şans faktörüne göre)
             const sideRoll = Math.random();
             const count = sideRoll < OBSTACLE_SIDE_BY_SIDE_3_CHANCE ? 3
               : sideRoll < OBSTACLE_SIDE_BY_SIDE_2_CHANCE ? 2 : 1;
-            const margin = SCREEN_WIDTH * 0.15;
-            const step = count === 1 ? 0 : (SCREEN_WIDTH - 2 * margin) / (count + 1);
             const newSpawns: Spawn[] = [];
             for (let i = 0; i < count; i++) {
               const worldX = count === 1
-                ? margin + Math.random() * (SCREEN_WIDTH - 2 * margin)
-                : margin + step * (i + 1) + (Math.random() - 0.5) * (step * 0.4);
-              const entry = pickByWeight(OBSTACLE_LIST);
+                ? randomInTrack()
+                : pathCenterAtSpawn + (Math.random() - 0.5) * spawnMargin * 1.6;
+              const entry = pickByWeight(OBSTACLE_LIST_FOR_SPAWN);
               const isRock = entry.id.startsWith('rock');
               const scaleFactor = isRock
                 ? 2 + Math.random()
@@ -695,8 +778,8 @@ function GameScreen({
             const next = [...spawnsRef.current, ...newSpawns];
             spawnsRef.current = next;
             setSpawns(next);
-          } else if (roll < SPAWN_CHANCE_OBSTACLE + SPAWN_CHANCE_GOOD) {
-            const worldX = SCREEN_WIDTH * 0.2 + Math.random() * SCREEN_WIDTH * 0.6;
+          } else if (roll < goodThreshold) {
+            const worldX = randomInTrack();
             const goodPool = reduceGhostRocketDropRef.current
               ? GOOD_ITEMS.map((i) =>
                   i.id === 'ghost' || i.id === 'rocket'
@@ -715,7 +798,7 @@ function GameScreen({
             spawnsRef.current = next;
             setSpawns(next);
           } else {
-            const worldX = SCREEN_WIDTH * 0.2 + Math.random() * SCREEN_WIDTH * 0.6;
+            const worldX = randomInTrack();
             const itemId = pickByWeight(BAD_ITEMS).id;
             const next = [...spawnsRef.current, {
               id: `spawn-${++spawnIdRef.current}`,
@@ -728,6 +811,107 @@ function GameScreen({
             setSpawns(next);
           }
         }
+      }
+
+      // Soft wall: yol kenarlarında kar yığını (sınır görünür; virajda dönmezsen çarparsın)
+      if (
+        !worldPaused &&
+        spd > 0 &&
+        totalScrollRef.current - lastBoundarySpawnedRef.current > BOUNDARY_SPAWN_INTERVAL_PX
+      ) {
+        lastBoundarySpawnedRef.current = totalScrollRef.current;
+        const edgeMargin = 14;
+        const newBoundary: Spawn[] = [];
+        const lookAheadPx = 120;
+        const midBoundaryY = scrollNow - SCREEN_HEIGHT - 212;
+        const scrollPosAtBoundary = totalScrollRef.current - scrollNow + midBoundaryY;
+        for (let row = 0; row < 2; row++) {
+          const boundaryY = scrollNow - SCREEN_HEIGHT - 240 + row * 55 + Math.random() * 30;
+          // Yolun o Y'daki konumuna göre sol/sağ kenar: scrollPos = totalScroll - scrollOffset + worldY (boundaryLineSegments ile aynı mantık)
+          const rowScrollPos = totalScrollRef.current - scrollNow + boundaryY;
+          const bounds =
+            mission && mission.points.length > 0
+              ? (() => {
+                  const centerX = SCREEN_WIDTH / 2 + getPathCenterXPx(rowScrollPos * SCROLL_TO_METERS, mission.points);
+                  const half = getTrackHalfWidthPx(SCREEN_WIDTH);
+                  return { minX: centerX - half, maxX: centerX + half, centerX };
+                })()
+              : getTrackBoundsAtScroll(rowScrollPos, SCREEN_WIDTH);
+          const leftX = bounds.minX + edgeMargin;
+          const rightX = bounds.maxX - edgeMargin;
+          const scaleFactor = 1.2 + Math.random() * 0.2;
+          newBoundary.push(
+            {
+              id: `spawn-${++spawnIdRef.current}`,
+              kind: 'obstacle',
+              itemId: 'snow-bank',
+              worldY: boundaryY,
+              worldX: leftX,
+              scaleFactor,
+            },
+            {
+              id: `spawn-${++spawnIdRef.current}`,
+              kind: 'obstacle',
+              itemId: 'snow-bank',
+              worldY: boundaryY,
+              worldX: rightX,
+              scaleFactor,
+            }
+          );
+        }
+        // Yönlendirici kar kümeleri: harita sağa gidiyorsa solda biraz daha fazla, sola gidiyorsa sağda
+        const turnAhead =
+          mission && mission.points.length > 0
+            ? getPathTurnAhead(scrollPosAtBoundary * SCROLL_TO_METERS, mission.points)
+            : (() => {
+                const cNow = getProceduralPathCenterWorldX(scrollPosAtBoundary, SCREEN_WIDTH);
+                const cAhead = getProceduralPathCenterWorldX(scrollPosAtBoundary + lookAheadPx, SCREEN_WIDTH);
+                if (cAhead - cNow > 12) return 'right';
+                if (cNow - cAhead > 12) return 'left';
+                return null;
+              })();
+        if (turnAhead === 'right') {
+          const extraY = scrollNow - SCREEN_HEIGHT - 200 + Math.random() * 40;
+          const scrollExtra = totalScrollRef.current - scrollNow + extraY;
+          const boundsExtra =
+            mission && mission.points.length > 0
+              ? (() => {
+                  const centerX = SCREEN_WIDTH / 2 + getPathCenterXPx(scrollExtra * SCROLL_TO_METERS, mission.points);
+                  const half = getTrackHalfWidthPx(SCREEN_WIDTH);
+                  return { minX: centerX - half, maxX: centerX + half };
+                })()
+              : getTrackBoundsAtScroll(scrollExtra, SCREEN_WIDTH);
+          newBoundary.push({
+            id: `spawn-${++spawnIdRef.current}`,
+            kind: 'obstacle',
+            itemId: 'snow-bank',
+            worldY: extraY,
+            worldX: boundsExtra.minX + edgeMargin,
+            scaleFactor: 1.2 + Math.random() * 0.2,
+          });
+        } else if (turnAhead === 'left') {
+          const extraY = scrollNow - SCREEN_HEIGHT - 200 + Math.random() * 40;
+          const scrollExtra = totalScrollRef.current - scrollNow + extraY;
+          const boundsExtra =
+            mission && mission.points.length > 0
+              ? (() => {
+                  const centerX = SCREEN_WIDTH / 2 + getPathCenterXPx(scrollExtra * SCROLL_TO_METERS, mission.points);
+                  const half = getTrackHalfWidthPx(SCREEN_WIDTH);
+                  return { minX: centerX - half, maxX: centerX + half };
+                })()
+              : getTrackBoundsAtScroll(scrollExtra, SCREEN_WIDTH);
+          newBoundary.push({
+            id: `spawn-${++spawnIdRef.current}`,
+            kind: 'obstacle',
+            itemId: 'snow-bank',
+            worldY: extraY,
+            worldX: boundsExtra.maxX - edgeMargin,
+            scaleFactor: 1.2 + Math.random() * 0.2,
+          });
+        }
+        const next = [...spawnsRef.current, ...newBoundary];
+        spawnsRef.current = next;
+        setSpawns(next);
       }
 
       // Sadece iyice ekranın altına çıkanları kaldır (üzerinden geçtikten sonra)
@@ -745,7 +929,7 @@ function GameScreen({
         const amt = speedBoostAmountRef.current;
         speedBoostUntilRef.current = 0;
         speedBoostAmountRef.current = 0;
-        if (amt > 0) setSpeed(prev => Math.max(0, prev - amt));
+        if (amt > 0) setSpeed(prev => Math.max(MIN_SPEED, prev - amt));
       }
 
       // Çarpışma: engeller görsel dikdörtgenle (taş/ağaç aynı), emoji spawn merkeziyle (zıplarken de çalışır)
@@ -753,20 +937,32 @@ function GameScreen({
         const ghost = now < ghostUntilRef.current;
         const invincible = now < invincibleUntilRef.current; // Ekstra can sonrası
         const skierX = SCREEN_WIDTH / 2 + skierOffsetXRef.current;
-        const skierLeft = skierX - SKIER_HIT_RANGE_X;
-        const skierRight = skierX + SKIER_HIT_RANGE_X;
-        const skierTop = SKIER_HIT_Y - SKIER_HIT_RANGE_Y;
-        const skierBottom = SKIER_HIT_Y + SKIER_HIT_RANGE_Y;
+        const skierTop = SKIER_HIT_Y - SKIER_HIT_RANGE_Y_SCALED;
+        const skierBottom = SKIER_HIT_Y + SKIER_HIT_RANGE_Y_SCALED + HIT_LEAD_Y_PX;
+        const halfW = SKIER_HIT_RANGE_X_SCALED;
+        // Engel çarpışması: duran = orta 1/3 (ağaç gibi), sola kayarken = sol yarı, sağa = sağ yarı (resim çerçevesi büyük olduğu için yan geçişte çarpmasın)
+        let obstSkierLeft: number;
+        let obstSkierRight: number;
+        if (st === 'left-ski') {
+          obstSkierLeft = skierX - halfW;
+          obstSkierRight = skierX;
+        } else if (st === 'right-ski') {
+          obstSkierLeft = skierX;
+          obstSkierRight = skierX + halfW;
+        } else {
+          obstSkierLeft = skierX - halfW / 3;
+          obstSkierRight = skierX + halfW / 3;
+        }
 
         for (const s of spawnsRef.current) {
           const screenY = s.worldY + scrollNow;
-          const screenX = s.worldX + tiltAmountRef.current + worldPanXRef.current;
+          const screenX = s.worldX + worldPanXRef.current;
 
           let hit: boolean;
           if (s.kind === 'obstacle') {
             const obs = getObstacleById(s.itemId as string);
             if (!obs) continue;
-            const scale = s.scaleFactor ?? 1;
+            const scale = (s.scaleFactor ?? 1) * GAME_VISUAL_SCALE;
             const w = Math.round(obs.width * scale);
             const h = Math.round(obs.height * scale);
             const isTree = (s.itemId as string).startsWith('tree');
@@ -776,8 +972,8 @@ function GameScreen({
             const obsTop = screenY - h;
             const obsBottom = screenY;
             hit =
-              skierLeft < hitRight &&
-              skierRight > hitLeft &&
+              obstSkierLeft < hitRight &&
+              obstSkierRight > hitLeft &&
               skierTop < obsBottom &&
               skierBottom > obsTop;
             if (!hit) {
@@ -785,10 +981,10 @@ function GameScreen({
               const obsLeft = screenX - w / 2;
               const obsRight = screenX + w / 2;
               const gap =
-                skierRight < obsLeft
-                  ? obsLeft - skierRight
-                  : skierLeft > obsRight
-                    ? skierLeft - obsRight
+                obstSkierRight < obsLeft
+                  ? obsLeft - obstSkierRight
+                  : obstSkierLeft > obsRight
+                    ? obstSkierLeft - obsRight
                     : 0;
               if (vertOverlap && gap > 0 && gap < CLOSE_CALL_GAP_PX) {
                 closeCallBubbleAtRef.current = now;
@@ -796,8 +992,9 @@ function GameScreen({
             }
           } else {
             hit =
-              Math.abs(screenY - SKIER_HIT_Y) < SKIER_HIT_RANGE_Y &&
-              Math.abs(screenX - skierX) < SKIER_HIT_RANGE_X;
+              screenY >= skierTop &&
+              screenY <= skierBottom &&
+              Math.abs(screenX - skierX) < SKIER_HIT_RANGE_X_SCALED;
           }
           if (!hit) continue;
 
@@ -805,18 +1002,20 @@ function GameScreen({
           if (now < jumpUntilRef.current && (s.kind === 'good' || s.kind === 'bad')) continue;
 
           if (s.kind === 'obstacle') {
+            if (s.itemId === 'snow-bank') {
+              // Sınır (kar yığını): düşme yok; sadece %50 hız kaybı (min 5 km/s)
+              setSpeed(prev => Math.max(MIN_SPEED, prev * 0.5));
+              setBoundaryHitAt(now);
+              break;
+            }
             const isTree = (s.itemId as string).startsWith('tree');
-            // Zıplarken kayaya çarpmayı sayma – kayanın üzerinden geç
             if (!isTree && now < jumpUntilRef.current) {
-              break; // Zıplayarak kayadan kaçtı, engel kaybolmasın
+              break;
             }
             const obs = getObstacleById(s.itemId as string);
             if (obs?.description) setPopupMessage(obs.description);
-            
-            // Engeller artık kaybolmaz (ne ağaç ne kaya)
-            
             if (ghost || invincible) {
-              break; // Hayalet veya ekstra can sonrası dokunulmaz: düşme
+              break;
             }
             if (extraLivesCountRef.current > 0) {
               extraLivesCountRef.current -= 1;
@@ -825,7 +1024,7 @@ function GameScreen({
               setTimeout(() => setShieldFlash(false), 400);
               onUseExtraLife?.();
               invincibleUntilRef.current = now + EXTRA_LIFE_INVINCIBLE_MS;
-              break; // Bir can tüketildi, kaldığı yerden devam
+              break;
             }
             lastHitWasTreeRef.current = isTree;
             slideEndTimeRef.current = now;
@@ -880,13 +1079,13 @@ function GameScreen({
                 const amt = speedBoostAmountRef.current;
                 speedBoostUntilRef.current = 0;
                 speedBoostAmountRef.current = 0;
-                if (amt > 0) setSpeed(prev => Math.max(0, prev - amt));
+                if (amt > 0) setSpeed(prev => Math.max(MIN_SPEED, prev - amt));
               }
               if (def.durationMs > 0) {
                 badEffectUntilRef.current = now + def.durationMs;
                 badSpeedMultiplierRef.current = def.speedMultiplier;
               } else {
-                setSpeed(prev => Math.max(0, prev * def.speedMultiplier));
+                setSpeed(prev => Math.max(MIN_SPEED, prev * def.speedMultiplier));
               }
               const penalty = def.scorePenalty;
               if (penalty != null) setScore(prev => Math.max(0, prev + penalty));
@@ -954,11 +1153,12 @@ function GameScreen({
   const handleRestart = useCallback(() => {
     onRunEnd?.(scoreRef.current);
     setState('stand');
-    setSpeed(0);
+    setSpeed(MIN_SPEED);
     setScore(0);
     setSpawns([]);
     spawnsRef.current = [];
     lastSpawnedScrollRef.current = 0;
+    lastBoundarySpawnedRef.current = 0;
     totalScrollRef.current = 0;
     ghostUntilRef.current = 0;
     superSpeedUntilRef.current = 0;
@@ -994,6 +1194,9 @@ function GameScreen({
     setGameWon(false);
     gameWonRef.current = false;
     setDistanceTraveledMeters(0);
+    setScrollForBoundary(0);
+    setTotalScrollForBoundary(0);
+    setBoundaryHitAt(0);
     worldPanXRef.current = 0;
     worldPanXAnim.setValue(0);
     if (particleXYRef.current.x.length === SNOW_PARTICLE_COUNT) {
@@ -1018,12 +1221,14 @@ function GameScreen({
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#e8eef4" />
 
-      {mission ? (
+      {(mission || distanceTraveledMeters > 0) ? (
         <MiniMap
           mission={mission}
           distanceTraveledMeters={distanceTraveledMeters}
           isOffPath={isOffPath}
-          scenarioLabel={t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+          scenarioLabel={mission ? t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach') : t('entry_freeSki')}
+          freeSkiPathPoints={mission ? undefined : freeSkiPathPoints}
+          freeSkiTotalMeters={mission ? undefined : freeSkiTotalMeters}
         />
       ) : null}
 
@@ -1036,8 +1241,18 @@ function GameScreen({
         </View>
       ) : null}
 
+      {/* Sınır (kar yığını) çarpınca: üstte işaret, %50 hız kaybı + içe itme */}
+      {boundaryHitAt > 0 ? (
+        <View style={styles.boundarySignWrap} pointerEvents="none">
+          <View style={styles.boundarySign}>
+            <Text style={styles.boundarySignIcon}>⚠</Text>
+            <Text style={styles.boundarySignText}>Sınır – hız %50</Text>
+          </View>
+        </View>
+      ) : null}
+
       {gameWon && mission ? (
-        <View style={styles.winOverlay}>
+        <View style={styles.winOverlay} pointerEvents="box-none">
           <Text style={styles.winTitle}>🎉 {t('game_goalReached')} 🎉</Text>
           <View style={styles.winMissionCard}>
             <Text style={styles.winMissionIcon}>
@@ -1088,9 +1303,27 @@ function GameScreen({
               ],
             },
           ]}>
+          {boundaryLineSegments.map((seg, i) => (
+            <View
+              key={`bound-left-${i}`}
+              style={[
+                styles.boundaryLine,
+                { left: seg.leftX - 2, top: seg.worldY - 22, width: 4, height: 44 },
+              ]}
+            />
+          ))}
+          {boundaryLineSegments.map((seg, i) => (
+            <View
+              key={`bound-right-${i}`}
+              style={[
+                styles.boundaryLine,
+                { left: seg.rightX - 2, top: seg.worldY - 22, width: 4, height: 44 },
+              ]}
+            />
+          ))}
           {spawns.map(s => {
             if (s.kind === 'obstacle') {
-              return <ObstacleView key={s.id} spawn={s as ObstacleSpawn} />;
+              return <ObstacleView key={s.id} spawn={s as ObstacleSpawn} globalScale={GAME_VISUAL_SCALE} />;
             }
             const emoji =
               s.kind === 'good'
@@ -1231,7 +1464,7 @@ function GameScreen({
             <Text style={styles.iconButtonText}>🔄</Text>
           </Pressable>
         ) : state === 'clumsy' || state === 'jump' ? (
-          <View style={styles.iconButtonDisabled}>
+          <View style={styles.iconButtonDisabled} pointerEvents="none">
             <Text style={styles.iconButtonText}>...</Text>
           </View>
         ) : (
@@ -1276,7 +1509,20 @@ function GameScreen({
               </View>
             </View>
           ) : null}
-          <View style={styles.skierFrame}>
+          <View
+            style={[
+              styles.skierFrame,
+              {
+                transform: [
+                  {
+                    scale:
+                      state === 'jump'
+                        ? GAME_VISUAL_SCALE * JUMP_SCALE_FACTOR
+                        : GAME_VISUAL_SCALE,
+                  },
+                ],
+              },
+            ]}>
             <Image
               source={SKYGUY_IMAGES[state]}
               style={state === 'right-ski' ? styles.skier : styles.skier}
@@ -1500,6 +1746,33 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 4,
   },
+  boundarySignWrap: {
+    position: 'absolute',
+    top: 48,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 21,
+  },
+  boundarySign: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(71, 85, 105, 0.9)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    gap: 6,
+  },
+  boundarySignIcon: {
+    fontSize: 18,
+  },
+  boundarySignText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#f1f5f9',
+  },
   topRight: {
     position: 'absolute',
     top: 12,
@@ -1528,6 +1801,11 @@ const styles = StyleSheet.create({
   iconButtonText: {
     fontSize: 22,
   },
+  boundaryLine: {
+    position: 'absolute',
+    backgroundColor: '#475569',
+    borderRadius: 1,
+  },
   emojiItemPlain: {
     position: 'absolute',
     width: 28,
@@ -1543,7 +1821,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 30,
+    zIndex: 100,
+    elevation: 100,
     padding: 24,
   },
   winTitle: {

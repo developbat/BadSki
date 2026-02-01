@@ -82,6 +82,10 @@ export type TranslationKeys = {
   upgrades_pointsProductDesc: string;
   upgrades_watchAdForPoints: string;
   upgrades_watchAdToUnlock: string;
+  upgrades_goodSpawnTitle: string;
+  upgrades_goodSpawnDesc: string;
+  upgrades_badSpawnTitle: string;
+  upgrades_badSpawnDesc: string;
 };
 
 export type LocaleMessages = Record<SupportedLocale, TranslationKeys>;

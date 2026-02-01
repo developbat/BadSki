@@ -111,13 +111,18 @@ function App(): React.JSX.Element {
             mission={mission}
             totalEarned={totalEarned}
             level={level}
+            goodSpawnLevel={upgrades.goodSpawnLevel ?? 0}
+            badSpawnLevel={upgrades.badSpawnLevel ?? 0}
             initialMaxSpeed={initialMaxSpeed}
             initialJumpDurationMs={initialJumpDurationMs}
             initialRocketCount={initialRocketCount}
             initialExtraLivesCount={initialExtraLivesCount}
             startWithGhostSeconds={startWithGhostSeconds}
             onExit={(score: number, distanceMeters?: number) => {
+              let done = false;
               const doExit = () => {
+                if (done) return;
+                done = true;
                 handleRunEnd(score);
                 if (mission === null && distanceMeters != null && distanceMeters > 0) {
                   updateFreeSkiRecordIfBetter(distanceMeters).then((newRecord) => {
@@ -126,7 +131,11 @@ function App(): React.JSX.Element {
                 }
                 setScreen('entry');
               };
-              showInterstitialWhenReady(doExit);
+              const fallback = setTimeout(doExit, 2500);
+              showInterstitialWhenReady(() => {
+                clearTimeout(fallback);
+                doExit();
+              });
             }}
             onRunEnd={handleRunEnd}
             onUseRocket={async () => {

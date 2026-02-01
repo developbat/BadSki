@@ -24,6 +24,10 @@ export interface UpgradesState {
   rocketStored: number;
   /** Ekstra can: çarpınca bir hak tüketilir, kaldığı yerden devam eder */
   extraLivesStored: number;
+  /** İyi nesne sıklığı: her seviye +2% iyi spawn (max 5) */
+  goodSpawnLevel: number;
+  /** Kötü nesne azaltma: her seviye -2% kötü spawn (max 5) */
+  badSpawnLevel: number;
 }
 
 export const DEFAULT_UPGRADES: UpgradesState = {
@@ -31,6 +35,8 @@ export const DEFAULT_UPGRADES: UpgradesState = {
   jumpDurationLevel: 0,
   rocketStored: 0,
   extraLivesStored: 0,
+  goodSpawnLevel: 0,
+  badSpawnLevel: 0,
 };
 
 // —— Zıplama süresi (kalıcı): +100 ms/level, max 5 sn ——
@@ -91,3 +97,17 @@ export const GHOST_START_SECONDS = 12;
 
 // —— Ekstra can (tüketilebilir, çarpınca bir hak gider, devam eder) ——
 export const EXTRA_LIFE_COST = 450; // Yüksek puan; birden fazla satın alınabilir
+
+// —— İyi / kötü spawn sıklığı (kalıcı, oyun getir oranlarını değiştirir) ——
+export const MAX_GOOD_SPAWN_LEVEL = 5;  // +2% iyi / seviye → en fazla +10%
+export const MAX_BAD_SPAWN_LEVEL = 5;   // -2% kötü / seviye → en fazla -10%
+
+export function getGoodSpawnUpgradeCost(level: number): number {
+  if (level >= MAX_GOOD_SPAWN_LEVEL) return Infinity;
+  return 400 + level * 120;
+}
+
+export function getBadSpawnUpgradeCost(level: number): number {
+  if (level >= MAX_BAD_SPAWN_LEVEL) return Infinity;
+  return 400 + level * 120;
+}

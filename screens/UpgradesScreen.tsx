@@ -23,6 +23,10 @@ import {
   ROCKET_COST,
   ROCKET_DURATION_MS,
   EXTRA_LIFE_COST,
+  getGoodSpawnUpgradeCost,
+  getBadSpawnUpgradeCost,
+  MAX_GOOD_SPAWN_LEVEL,
+  MAX_BAD_SPAWN_LEVEL,
   type UpgradesState,
 } from '../constants/upgrades';
 import {
@@ -65,6 +69,12 @@ function UpgradesScreen({
   const canBuyJump = jumpLevel < MAX_JUMP_DURATION_LEVEL && totalPoints >= jumpCost;
   const canBuyRocket = totalPoints >= ROCKET_COST;
   const canBuyExtraLife = totalPoints >= EXTRA_LIFE_COST;
+  const goodSpawnLevel = upgrades.goodSpawnLevel ?? 0;
+  const badSpawnLevel = upgrades.badSpawnLevel ?? 0;
+  const goodSpawnCost = getGoodSpawnUpgradeCost(goodSpawnLevel);
+  const badSpawnCost = getBadSpawnUpgradeCost(badSpawnLevel);
+  const canBuyGoodSpawn = goodSpawnLevel < MAX_GOOD_SPAWN_LEVEL && totalPoints >= goodSpawnCost;
+  const canBuyBadSpawn = badSpawnLevel < MAX_BAD_SPAWN_LEVEL && totalPoints >= badSpawnCost;
 
   const handleBuySpeed = async () => {
     if (!canBuySpeed) return;
@@ -148,6 +158,42 @@ function UpgradesScreen({
       const current = await getUpgrades();
       await setUpgrades({ ...current, extraLivesStored: (current.extraLivesStored ?? 0) + 1 });
       onPurchase();
+    });
+  };
+
+  const handleBuyGoodSpawn = async () => {
+    if (!canBuyGoodSpawn) return;
+    await setTotalPoints(totalPoints - goodSpawnCost);
+    const current = await getUpgrades();
+    await setUpgrades({ ...current, goodSpawnLevel: (current.goodSpawnLevel ?? 0) + 1 });
+    onPurchase();
+  };
+
+  const handleBuyBadSpawn = async () => {
+    if (!canBuyBadSpawn) return;
+    await setTotalPoints(totalPoints - badSpawnCost);
+    const current = await getUpgrades();
+    await setUpgrades({ ...current, badSpawnLevel: (current.badSpawnLevel ?? 0) + 1 });
+    onPurchase();
+  };
+
+  const unlockGoodSpawnViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      if ((current.goodSpawnLevel ?? 0) < MAX_GOOD_SPAWN_LEVEL) {
+        await setUpgrades({ ...current, goodSpawnLevel: (current.goodSpawnLevel ?? 0) + 1 });
+        onPurchase();
+      }
+    });
+  };
+
+  const unlockBadSpawnViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      if ((current.badSpawnLevel ?? 0) < MAX_BAD_SPAWN_LEVEL) {
+        await setUpgrades({ ...current, badSpawnLevel: (current.badSpawnLevel ?? 0) + 1 });
+        onPurchase();
+      }
     });
   };
 
@@ -325,6 +371,68 @@ function UpgradesScreen({
                 </TouchableOpacity>
               )}
             </View>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>⭐ {t('upgrades_goodSpawnTitle')}</Text>
+          <Text style={styles.cardDesc}>{t('upgrades_goodSpawnDesc')}</Text>
+          <View style={styles.cardRow}>
+            <Text style={styles.cardStat}>
+              {t('upgrades_level')} {goodSpawnLevel}/{MAX_GOOD_SPAWN_LEVEL} → +{goodSpawnLevel * 2}% iyi
+            </Text>
+            {goodSpawnLevel < MAX_GOOD_SPAWN_LEVEL ? (
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.buyButton, !canBuyGoodSpawn && styles.buyButtonDisabled]}
+                  onPress={handleBuyGoodSpawn}
+                  disabled={!canBuyGoodSpawn}
+                  activeOpacity={0.8}>
+                  <Text style={styles.buyButtonText}>+2% — ⭐ {goodSpawnCost}</Text>
+                </TouchableOpacity>
+                {!canBuyGoodSpawn && (
+                  <TouchableOpacity
+                    style={styles.unlockAdButton}
+                    onPress={unlockGoodSpawnViaAd}
+                    activeOpacity={0.8}>
+                    <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.maxedText}>{t('upgrades_maxed')}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>🍋 {t('upgrades_badSpawnTitle')}</Text>
+          <Text style={styles.cardDesc}>{t('upgrades_badSpawnDesc')}</Text>
+          <View style={styles.cardRow}>
+            <Text style={styles.cardStat}>
+              {t('upgrades_level')} {badSpawnLevel}/{MAX_BAD_SPAWN_LEVEL} → -{badSpawnLevel * 2}% kötü
+            </Text>
+            {badSpawnLevel < MAX_BAD_SPAWN_LEVEL ? (
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.buyButton, !canBuyBadSpawn && styles.buyButtonDisabled]}
+                  onPress={handleBuyBadSpawn}
+                  disabled={!canBuyBadSpawn}
+                  activeOpacity={0.8}>
+                  <Text style={styles.buyButtonText}>-2% — ⭐ {badSpawnCost}</Text>
+                </TouchableOpacity>
+                {!canBuyBadSpawn && (
+                  <TouchableOpacity
+                    style={styles.unlockAdButton}
+                    onPress={unlockBadSpawnViaAd}
+                    activeOpacity={0.8}>
+                    <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.maxedText}>{t('upgrades_maxed')}</Text>
+            )}
           </View>
         </View>
       </ScrollView>

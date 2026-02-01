@@ -8,6 +8,8 @@ import {
   DEFAULT_UPGRADES,
   MAX_SPEED_LEVEL,
   MAX_JUMP_DURATION_LEVEL,
+  MAX_GOOD_SPAWN_LEVEL,
+  MAX_BAD_SPAWN_LEVEL,
   type UpgradesState,
 } from '../constants/upgrades';
 
@@ -97,6 +99,8 @@ export async function getUpgrades(): Promise<UpgradesState> {
       jumpDurationLevel: Math.max(0, Math.min(parsed.jumpDurationLevel ?? 0, MAX_JUMP_DURATION_LEVEL)),
       rocketStored: Math.max(0, parsed.rocketStored ?? 0),
       extraLivesStored: Math.max(0, parsed.extraLivesStored ?? 0),
+      goodSpawnLevel: Math.max(0, Math.min(parsed.goodSpawnLevel ?? 0, MAX_GOOD_SPAWN_LEVEL)),
+      badSpawnLevel: Math.max(0, Math.min(parsed.badSpawnLevel ?? 0, MAX_BAD_SPAWN_LEVEL)),
     };
   } catch {
     return DEFAULT_UPGRADES;
