@@ -33,6 +33,11 @@ import {
 } from '../storage/gameStorage';
 import { setPendingGhostSeconds } from '../storage/pendingGhost';
 import { useI18n } from '../i18n';
+import {
+  showRewardedWhenReady,
+  showInterstitialWhenReady,
+  REWARDED_POINTS,
+} from '../services/adMob';
 
 type Props = {
   totalPoints: number;
@@ -100,6 +105,52 @@ function UpgradesScreen({
     onPurchase();
   };
 
+  const handleWatchAdForPoints = () => {
+    showRewardedWhenReady(async (points) => {
+      await addPoints(points);
+      onPurchase();
+    });
+  };
+
+  const unlockSpeedViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      if (current.speedLevel < MAX_SPEED_LEVEL) {
+        await setUpgrades({ ...current, speedLevel: current.speedLevel + 1 });
+        onPurchase();
+      }
+    });
+  };
+  const unlockJumpViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      if (current.jumpDurationLevel < MAX_JUMP_DURATION_LEVEL) {
+        await setUpgrades({ ...current, jumpDurationLevel: current.jumpDurationLevel + 1 });
+        onPurchase();
+      }
+    });
+  };
+  const unlockRocketViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      await setUpgrades({ ...current, rocketStored: (current.rocketStored ?? 0) + 1 });
+      onPurchase();
+    });
+  };
+  const unlockGhostViaAd = () => {
+    showInterstitialWhenReady(() => {
+      setPendingGhostSeconds(GHOST_START_SECONDS);
+      onPurchase();
+    });
+  };
+  const unlockExtraLifeViaAd = () => {
+    showInterstitialWhenReady(async () => {
+      const current = await getUpgrades();
+      await setUpgrades({ ...current, extraLivesStored: (current.extraLivesStored ?? 0) + 1 });
+      onPurchase();
+    });
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
@@ -120,6 +171,17 @@ function UpgradesScreen({
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>⭐ {t('upgrades_pointsProductTitle', { points: REWARDED_POINTS })}</Text>
+          <Text style={styles.cardDesc}>{t('upgrades_pointsProductDesc')}</Text>
+          <TouchableOpacity
+            style={styles.buyButton}
+            onPress={handleWatchAdForPoints}
+            activeOpacity={0.8}>
+            <Text style={styles.buyButtonText}>🎬 {t('upgrades_watchAdForPoints')}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>⚡ {t('upgrades_maxSpeed')}</Text>
           <Text style={styles.cardDesc}>{t('upgrades_maxSpeedDesc')}</Text>
           <View style={styles.cardRow}>
@@ -127,15 +189,25 @@ function UpgradesScreen({
               {t('upgrades_level')} {speedLevel}/{MAX_SPEED_LEVEL} → {getMaxSpeedFromLevel(speedLevel)} km
             </Text>
             {speedLevel < MAX_SPEED_LEVEL ? (
-              <TouchableOpacity
-                style={[styles.buyButton, !canBuySpeed && styles.buyButtonDisabled]}
-                onPress={handleBuySpeed}
-                disabled={!canBuySpeed}
-                activeOpacity={0.8}>
-                <Text style={styles.buyButtonText}>
-                  +10 km — ⭐ {speedCost}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.buyButton, !canBuySpeed && styles.buyButtonDisabled]}
+                  onPress={handleBuySpeed}
+                  disabled={!canBuySpeed}
+                  activeOpacity={0.8}>
+                  <Text style={styles.buyButtonText}>
+                    +10 km — ⭐ {speedCost}
+                  </Text>
+                </TouchableOpacity>
+                {!canBuySpeed && (
+                  <TouchableOpacity
+                    style={styles.unlockAdButton}
+                    onPress={unlockSpeedViaAd}
+                    activeOpacity={0.8}>
+                    <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ) : (
               <Text style={styles.maxedText}>{t('upgrades_maxed')}</Text>
             )}
@@ -150,13 +222,23 @@ function UpgradesScreen({
               {t('upgrades_level')} {jumpLevel}/{MAX_JUMP_DURATION_LEVEL} → {getJumpDurationMs(jumpLevel)} ms
             </Text>
             {jumpLevel < MAX_JUMP_DURATION_LEVEL ? (
-              <TouchableOpacity
-                style={[styles.buyButton, !canBuyJump && styles.buyButtonDisabled]}
-                onPress={handleBuyJumpDuration}
-                disabled={!canBuyJump}
-                activeOpacity={0.8}>
-                <Text style={styles.buyButtonText}>+200 ms — ⭐ {jumpCost}</Text>
-              </TouchableOpacity>
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  style={[styles.buyButton, !canBuyJump && styles.buyButtonDisabled]}
+                  onPress={handleBuyJumpDuration}
+                  disabled={!canBuyJump}
+                  activeOpacity={0.8}>
+                  <Text style={styles.buyButtonText}>+200 ms — ⭐ {jumpCost}</Text>
+                </TouchableOpacity>
+                {!canBuyJump && (
+                  <TouchableOpacity
+                    style={styles.unlockAdButton}
+                    onPress={unlockJumpViaAd}
+                    activeOpacity={0.8}>
+                    <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             ) : (
               <Text style={styles.maxedText}>{t('upgrades_maxed')}</Text>
             )}
@@ -168,15 +250,25 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>{t('upgrades_rocketDesc')}</Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardStat}>Envanter: {upgrades.rocketStored ?? 0}</Text>
-            <TouchableOpacity
-              style={[styles.buyButton, !canBuyRocket && styles.buyButtonDisabled]}
-              onPress={handleBuyRocket}
-              disabled={!canBuyRocket}
-              activeOpacity={0.8}>
-              <Text style={styles.buyButtonText}>
-                {t('upgrades_buy')} — ⭐ {ROCKET_COST}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={[styles.buyButton, !canBuyRocket && styles.buyButtonDisabled]}
+                onPress={handleBuyRocket}
+                disabled={!canBuyRocket}
+                activeOpacity={0.8}>
+                <Text style={styles.buyButtonText}>
+                  {t('upgrades_buy')} — ⭐ {ROCKET_COST}
+                </Text>
+              </TouchableOpacity>
+              {!canBuyRocket && (
+                <TouchableOpacity
+                  style={styles.unlockAdButton}
+                  onPress={unlockRocketViaAd}
+                  activeOpacity={0.8}>
+                  <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
 
@@ -185,18 +277,28 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>
             {t('upgrades_ghostModeDesc', { seconds: GHOST_START_SECONDS })}
           </Text>
-          <TouchableOpacity
-            style={[
-              styles.buyButton,
-              totalPoints < GHOST_START_COST && styles.buyButtonDisabled,
-            ]}
-            onPress={handleBuyGhost}
-            disabled={totalPoints < GHOST_START_COST}
-            activeOpacity={0.8}>
-            <Text style={styles.buyButtonText}>
-              {t('upgrades_buy')} — ⭐ {GHOST_START_COST}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={[
+                styles.buyButton,
+                totalPoints < GHOST_START_COST && styles.buyButtonDisabled,
+              ]}
+              onPress={handleBuyGhost}
+              disabled={totalPoints < GHOST_START_COST}
+              activeOpacity={0.8}>
+              <Text style={styles.buyButtonText}>
+                {t('upgrades_buy')} — ⭐ {GHOST_START_COST}
+              </Text>
+            </TouchableOpacity>
+            {totalPoints < GHOST_START_COST && (
+              <TouchableOpacity
+                style={styles.unlockAdButton}
+                onPress={unlockGhostViaAd}
+                activeOpacity={0.8}>
+                <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -204,15 +306,25 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>{t('upgrades_extraLifeDesc')}</Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardStat}>{t('upgrades_extraLifeCount')}: {upgrades.extraLivesStored ?? 0}</Text>
-            <TouchableOpacity
-              style={[styles.buyButton, !canBuyExtraLife && styles.buyButtonDisabled]}
-              onPress={handleBuyExtraLife}
-              disabled={!canBuyExtraLife}
-              activeOpacity={0.8}>
-              <Text style={styles.buyButtonText}>
-                {t('upgrades_buy')} — ⭐ {EXTRA_LIFE_COST}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.cardActions}>
+              <TouchableOpacity
+                style={[styles.buyButton, !canBuyExtraLife && styles.buyButtonDisabled]}
+                onPress={handleBuyExtraLife}
+                disabled={!canBuyExtraLife}
+                activeOpacity={0.8}>
+                <Text style={styles.buyButtonText}>
+                  {t('upgrades_buy')} — ⭐ {EXTRA_LIFE_COST}
+                </Text>
+              </TouchableOpacity>
+              {!canBuyExtraLife && (
+                <TouchableOpacity
+                  style={styles.unlockAdButton}
+                  onPress={unlockExtraLifeViaAd}
+                  activeOpacity={0.8}>
+                  <Text style={styles.unlockAdButtonText}>🎬 {t('upgrades_watchAdToUnlock')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -271,6 +383,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 24,
     paddingBottom: 48,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  unlockAdButton: {
+    backgroundColor: 'rgba(100, 116, 139, 0.5)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  unlockAdButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#cbd5e1',
   },
   card: {
     backgroundColor: 'rgba(30, 41, 59, 0.6)',

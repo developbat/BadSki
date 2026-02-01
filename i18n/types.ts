@@ -78,6 +78,10 @@ export type TranslationKeys = {
   upgrades_rocket: string;
   upgrades_rocketDesc: string;
   game_rocket: string;
+  upgrades_pointsProductTitle: string;
+  upgrades_pointsProductDesc: string;
+  upgrades_watchAdForPoints: string;
+  upgrades_watchAdToUnlock: string;
 };
 
 export type LocaleMessages = Record<SupportedLocale, TranslationKeys>;

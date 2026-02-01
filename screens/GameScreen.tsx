@@ -801,6 +801,9 @@ function GameScreen({
           }
           if (!hit) continue;
 
+          // Zıplarken yerdeki itemlerin (good/bad) üzerinden geç – temas sayılmaz
+          if (now < jumpUntilRef.current && (s.kind === 'good' || s.kind === 'bad')) continue;
+
           if (s.kind === 'obstacle') {
             const isTree = (s.itemId as string).startsWith('tree');
             // Zıplarken kayaya çarpmayı sayma – kayanın üzerinden geç

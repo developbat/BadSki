@@ -22,6 +22,7 @@ import {
   setUpgrades,
 } from './storage/gameStorage';
 import { consumePendingGhost } from './storage/pendingGhost';
+import { initAdMob, loadInterstitial, loadRewarded, showInterstitialWhenReady } from './services/adMob';
 
 type Screen = 'entry' | 'game' | 'upgrades';
 
@@ -49,6 +50,13 @@ function App(): React.JSX.Element {
   useEffect(() => {
     loadStorage();
   }, [loadStorage]);
+
+  useEffect(() => {
+    initAdMob().then(() => {
+      loadInterstitial();
+      loadRewarded();
+    });
+  }, []);
 
   const [startWithGhostSeconds, setStartWithGhostSeconds] = useState(0);
 
@@ -109,13 +117,16 @@ function App(): React.JSX.Element {
             initialExtraLivesCount={initialExtraLivesCount}
             startWithGhostSeconds={startWithGhostSeconds}
             onExit={(score: number, distanceMeters?: number) => {
-              handleRunEnd(score);
-              if (mission === null && distanceMeters != null && distanceMeters > 0) {
-                updateFreeSkiRecordIfBetter(distanceMeters).then((newRecord) => {
-                  if (newRecord === distanceMeters) setFreeSkiRecord(distanceMeters);
-                });
-              }
-              setScreen('entry');
+              const doExit = () => {
+                handleRunEnd(score);
+                if (mission === null && distanceMeters != null && distanceMeters > 0) {
+                  updateFreeSkiRecordIfBetter(distanceMeters).then((newRecord) => {
+                    if (newRecord === distanceMeters) setFreeSkiRecord(distanceMeters);
+                  });
+                }
+                setScreen('entry');
+              };
+              showInterstitialWhenReady(doExit);
             }}
             onRunEnd={handleRunEnd}
             onUseRocket={async () => {

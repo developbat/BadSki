@@ -221,6 +221,7 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
   if (phase === 'preview' && mission) {
     return (
       <View style={styles.container}>
+        <View style={styles.entryContent}>
         <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
         <View style={styles.topBar}>
           <View>
@@ -268,6 +269,7 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
             </View>
           </View>
         ) : null}
+        </View>
       </View>
     );
   }
@@ -292,6 +294,7 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
     }
     return (
       <View style={styles.container}>
+        <View style={styles.entryContent}>
         <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
         <View style={styles.topBar}>
           <View>
@@ -336,12 +339,14 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
             </View>
           </View>
         </Animated.View>
+        </View>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
+      <View style={styles.entryContent}>
       <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
       <View style={styles.topBar}>
         <View>
@@ -403,6 +408,7 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
           </View>
         </View>
       ) : null}
+      </View>
     </View>
   );
 }
@@ -411,9 +417,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0f172a',
+    padding: 24,
+  },
+  entryContent: {
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
   },
   topBar: {
     position: 'absolute',

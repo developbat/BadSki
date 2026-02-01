@@ -46,7 +46,11 @@ const en: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Jump longer to clear more rocks. +200 ms per level (permanent).',
   upgrades_rocket: 'Rocket (inventory)',
   upgrades_rocketDesc: 'Use in game for super speed. Tap inventory slot to activate.',
+  upgrades_pointsProductTitle: '{{points}} points',
+  upgrades_pointsProductDesc: 'Watch a rewarded ad to get points.',
   game_rocket: 'Rocket',
+  upgrades_watchAdForPoints: 'Watch ad – earn points',
+  upgrades_watchAdToUnlock: 'Watch ad to unlock',
 };
 
 const tr: TranslationKeys = {
@@ -91,7 +95,11 @@ const tr: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Daha uzun zıpla, daha çok kayadan geç. Seviye başı +200 ms (kalıcı).',
   upgrades_rocket: 'Roket (envanter)',
   upgrades_rocketDesc: 'Oyunda kullan: süper hız. Envanterdeki slota basarak kullan.',
+  upgrades_pointsProductTitle: '{{points}} puan',
+  upgrades_pointsProductDesc: 'Ödüllü reklam izle, puan kazan.',
   game_rocket: 'Roket',
+  upgrades_watchAdForPoints: 'Reklam izle – puan kazan',
+  upgrades_watchAdToUnlock: 'Reklam izle ile aç',
 };
 
 const de: TranslationKeys = {
@@ -136,7 +144,11 @@ const de: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Länger springen, mehr Felsen überwinden. +200 ms pro Stufe (dauerhaft).',
   upgrades_rocket: 'Rakete (Inventar)',
   upgrades_rocketDesc: 'Im Spiel nutzen: Super-Geschwindigkeit. Tippe auf Inventar-Slot.',
+  upgrades_pointsProductTitle: '{{points}} Punkte',
+  upgrades_pointsProductDesc: 'Belohnungswerbung ansehen und Punkte erhalten.',
   game_rocket: 'Rakete',
+  upgrades_watchAdForPoints: 'Werbung ansehen – Punkte verdienen',
+  upgrades_watchAdToUnlock: 'Werbung ansehen zum Freischalten',
 };
 
 const fr: TranslationKeys = {
@@ -181,7 +193,11 @@ const fr: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Saute plus longtemps pour passer plus de rochers. +200 ms par niveau (permanent).',
   upgrades_rocket: 'Fusée (inventaire)',
   upgrades_rocketDesc: 'Utiliser en jeu : super vitesse. Appuie sur l\'emplacement.',
+  upgrades_pointsProductTitle: '{{points}} points',
+  upgrades_pointsProductDesc: 'Regarde une pub récompensée pour gagner des points.',
   game_rocket: 'Fusée',
+  upgrades_watchAdForPoints: 'Voir la pub – gagner des points',
+  upgrades_watchAdToUnlock: 'Voir la pub pour débloquer',
 };
 
 const pt: TranslationKeys = {
@@ -226,6 +242,10 @@ const pt: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Salte mais para passar mais rochas. +200 ms por nível (permanente).',
   upgrades_rocket: 'Foguete (inventário)',
   upgrades_rocketDesc: 'Use no jogo: super velocidade. Toque no slot do inventário.',
+  upgrades_pointsProductTitle: '{{points}} pontos',
+  upgrades_pointsProductDesc: 'Assista a um anúncio recompensado para ganhar pontos.',
+  upgrades_watchAdForPoints: 'Ver anúncio – ganhar pontos',
+  upgrades_watchAdToUnlock: 'Ver anúncio para desbloquear',
   game_rocket: 'Foguete',
 };
 
@@ -271,6 +291,10 @@ const es: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Salta más para pasar más rocas. +200 ms por nivel (permanente).',
   upgrades_rocket: 'Cohete (inventario)',
   upgrades_rocketDesc: 'Usar en juego: super velocidad. Toca el slot del inventario.',
+  upgrades_pointsProductTitle: '{{points}} puntos',
+  upgrades_pointsProductDesc: 'Mira un anuncio recompensado para ganar puntos.',
+  upgrades_watchAdForPoints: 'Ver anuncio – ganar puntos',
+  upgrades_watchAdToUnlock: 'Ver anuncio para desbloquear',
   game_rocket: 'Cohete',
 };
 
@@ -316,6 +340,10 @@ const ru: TranslationKeys = {
   upgrades_jumpDurationDesc: 'Дольше прыгай, проходи больше камней. +200 мс за уровень (навсегда).',
   upgrades_rocket: 'Ракета (инвентарь)',
   upgrades_rocketDesc: 'Использовать в игре: супер скорость. Нажми на слот инвентаря.',
+  upgrades_pointsProductTitle: '{{points}} очков',
+  upgrades_pointsProductDesc: 'Посмотри рекламу и получи очки.',
+  upgrades_watchAdForPoints: 'Смотреть рекламу – получить очки',
+  upgrades_watchAdToUnlock: 'Смотреть рекламу для разблокировки',
   game_rocket: 'Ракета',
 };
 
@@ -361,6 +389,10 @@ const ja: TranslationKeys = {
   upgrades_jumpDurationDesc: '長くジャンプして岩を越える。レベルごとに+200 ms（永続）。',
   upgrades_rocket: 'ロケット（インベントリ）',
   upgrades_rocketDesc: 'ゲーム内で使用：スーパースピード。スロットをタップ。',
+  upgrades_pointsProductTitle: '{{points}} ポイント',
+  upgrades_pointsProductDesc: 'リワード広告を見てポイントを獲得。',
+  upgrades_watchAdForPoints: '広告を見る – ポイント獲得',
+  upgrades_watchAdToUnlock: '広告を見てアンロック',
   game_rocket: 'ロケット',
 };
 
