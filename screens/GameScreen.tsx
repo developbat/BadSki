@@ -66,6 +66,10 @@ import { ROCKET_DURATION_MS } from '../constants/upgrades';
 import { useI18n } from '../i18n';
 
 const CLUMSY_DURATION_MS = 500;
+// Kar parçacıkları: sabit sayı, her frame sadece transform güncellenir (FPS dostu)
+const SNOW_PARTICLE_COUNT = 25;
+const SNOW_PARTICLE_SIZE = 4;
+const SNOW_PARTICLE_SPEED_FACTOR = 0.35; // Hıza göre yukarı kayma
 const ACCELERATE_DURATION_MS = 400;
 const BASE_JUMP_DURATION_MS = 700; // Yükseltmeyle artar (initialJumpDurationMs)
 const SEGMENT_HEIGHT = 600;
@@ -78,7 +82,6 @@ const DASH_WIDTH = 18;
 const DASH_GAP = 14;
 const WAVE_AMP = 5;
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
-const DASHES_PER_ROW = Math.ceil(SCREEN_WIDTH / (DASH_WIDTH + DASH_GAP)) + 2;
 // Dönüş: basılı tutulunca daha keskin sağa/sola (tilt ve drift artırıldı, ramp hızlandı)
 const STAGE_TILT_PX = 44;
 const TILT_RAMP_MS = 260;
@@ -211,6 +214,14 @@ function GameScreen({
   const skierOffsetXAnim = useRef(new Animated.Value(0)).current;
   const worldPanXRef = useRef(0);
   const worldPanXAnim = useRef(new Animated.Value(0)).current;
+  const [particleAnims] = useState(() =>
+    Array.from({ length: SNOW_PARTICLE_COUNT }, () => ({
+      x: new Animated.Value(Math.random() * SCREEN_WIDTH),
+      y: new Animated.Value(Math.random() * SCREEN_HEIGHT),
+    }))
+  );
+  const particleXYRef = useRef<{ x: number[]; y: number[] }>({ x: [], y: [] });
+  const particleAnimsInitializedRef = useRef(false);
   const [popupMessage, setPopupMessage] = useState<string | null>(null);
   const popupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [buffRemaining, setBuffRemaining] = useState({ ghost: 0, superSpeed: 0, speedBoost: 0 });
@@ -314,6 +325,22 @@ function GameScreen({
     }, 500);
     return () => clearInterval(id);
   }, []);
+
+  // Kar parçacıkları: sayısal pozisyonları ref'te tut (her frame setValue, yeni eleman yok)
+  useEffect(() => {
+    const x: number[] = [];
+    const y: number[] = [];
+    for (let i = 0; i < SNOW_PARTICLE_COUNT; i++) {
+      x.push(Math.random() * SCREEN_WIDTH);
+      y.push(Math.random() * SCREEN_HEIGHT);
+    }
+    particleXYRef.current = { x, y };
+    particleAnims.forEach((p, i) => {
+      p.x.setValue(x[i]);
+      p.y.setValue(y[i]);
+    });
+    particleAnimsInitializedRef.current = true;
+  }, [particleAnims]);
 
   // Popup: 2.5 s sonra kapan
   useEffect(() => {
@@ -556,6 +583,24 @@ function GameScreen({
         worldPanXAnim.setValue(worldPanXRef.current);
       }
 
+      // Kar parçacıkları: sadece pozisyon güncelle, ekran dışına çıkanı karşı kenardan al
+      if (particleAnimsInitializedRef.current && particleXYRef.current.x.length === SNOW_PARTICLE_COUNT) {
+        const dx = worldPaused ? 0 : effectiveSpeed * SNOW_PARTICLE_SPEED_FACTOR;
+        const xy = particleXYRef.current;
+        for (let i = 0; i < SNOW_PARTICLE_COUNT; i++) {
+          xy.y[i] += dx;
+          xy.x[i] += (Math.random() - 0.5) * 0.8;
+          if (xy.y[i] > SCREEN_HEIGHT + SNOW_PARTICLE_SIZE * 2) {
+            xy.y[i] = -Math.random() * 40;
+            xy.x[i] = Math.random() * SCREEN_WIDTH;
+          }
+          if (xy.x[i] < -20) xy.x[i] = SCREEN_WIDTH + 10;
+          if (xy.x[i] > SCREEN_WIDTH + 20) xy.x[i] = -10;
+          particleAnims[i].x.setValue(xy.x[i]);
+          particleAnims[i].y.setValue(xy.y[i]);
+        }
+      }
+
       if (!worldPaused && effectiveSpeed > 0) {
         if (slideStartTimeRef.current === null) slideStartTimeRef.current = now;
         const delta = effectiveSpeed * SCROLL_FACTOR;
@@ -787,19 +832,29 @@ function GameScreen({
           if (s.kind === 'good') {
             const def = GOOD_ITEMS.find(g => g.id === s.itemId);
             if (def) {
-              setPopupMessage(def.description);
-              if (def.points) setScore(prev => prev + def.points);
               if (def.effect === 'inventory_rocket') {
-                setRocketCount((c) => c + 1);
+                setRocketCount((c) => {
+                  const n = c + 1;
+                  setPopupMessage(`🚀 ×${n}`);
+                  return n;
+                });
               } else if (def.effect === 'inventory_shield') {
-                setExtraLivesCount((c) => c + 1);
-              } else if (def.effect === 'ghost') {
+                setExtraLivesCount((c) => {
+                  const n = c + 1;
+                  setPopupMessage(`🛡️ ×${n}`);
+                  return n;
+                });
+              } else {
+                setPopupMessage(def.description);
+              }
+              if (def.points) setScore(prev => prev + def.points);
+              if (def.effect === 'ghost') {
                 ghostUntilRef.current = now + def.durationMs;
               } else if (def.effect === 'super_speed') {
                 superSpeedUntilRef.current = now + def.durationMs;
               } else if (def.effect === 'speed_boost') {
                 const add = SPEED_BOOST_ADD;
-                setSpeed(prev => Math.min(maxSpeedRef.current, prev + add));
+                setSpeed(prev => prev + add);
                 speedBoostAmountRef.current += add;
                 speedBoostUntilRef.current = now + def.durationMs;
               }
@@ -938,67 +993,23 @@ function GameScreen({
     setDistanceTraveledMeters(0);
     worldPanXRef.current = 0;
     worldPanXAnim.setValue(0);
-  }, [onRunEnd]);
+    if (particleXYRef.current.x.length === SNOW_PARTICLE_COUNT) {
+      for (let i = 0; i < SNOW_PARTICLE_COUNT; i++) {
+        const x = Math.random() * SCREEN_WIDTH;
+        const y = Math.random() * SCREEN_HEIGHT;
+        particleXYRef.current.x[i] = x;
+        particleXYRef.current.y[i] = y;
+        particleAnims[i].x.setValue(x);
+        particleAnims[i].y.setValue(y);
+      }
+    }
+  }, [onRunEnd, particleAnims]);
 
   const isDisabled =
     state === 'clumsy' ||
     state === 'fall-florr' ||
     state === 'fall-florr-back' ||
     state === 'jump';
-
-  // Kar dokusu: satır bazlı hafif ton farkı + dash kalınlığı/opaklık varyasyonu
-  const getDashStyle = (rowIndex: number, dashIndex: number) => {
-    const baseTop = (rowIndex * SEGMENT_HEIGHT) / 12;
-    const wave = Math.sin(dashIndex * 0.45) * WAVE_AMP + Math.sin(rowIndex * 0.7) * 2;
-    const rowParity = rowIndex % 3;
-    const opacity = 0.08 + (rowParity === 0 ? 0.06 : rowParity === 1 ? 0.04 : 0.07);
-    const height = rowParity === 2 ? 2 : 1;
-    const left = dashIndex * (DASH_WIDTH + DASH_GAP);
-    const top = baseTop + wave;
-    return { left, top, opacity, height };
-  };
-
-  const renderSegment = (keyPrefix: string) => (
-    <View style={styles.segment}>
-      {/* Alt katman: hafif kar gölgesi çizgileri */}
-      {Array.from({length: 12}).map((_, rowIndex) =>
-        Array.from({length: DASHES_PER_ROW}).map((_, dashIndex) => {
-          const { left, top, opacity, height } = getDashStyle(rowIndex, dashIndex);
-          return (
-            <View
-              key={`${keyPrefix}-${rowIndex}-${dashIndex}`}
-              style={[
-                styles.stripeDash,
-                {
-                  left,
-                  top,
-                  backgroundColor: `rgba(100, 120, 140, ${opacity})`,
-                  height,
-                },
-              ]}
-            />
-          );
-        }),
-      )}
-      {/* Üst katman: kayak izi benzeri daha belirgin çizgiler (seyrek) */}
-      {Array.from({length: 12}).map((_, rowIndex) =>
-        (rowIndex % 2 === 0 ? [0, 2, 4] : [1, 3]).map(offset => {
-          const dashIndex = Math.min(offset * Math.floor(DASHES_PER_ROW / 5), DASHES_PER_ROW - 1);
-          const { left, top } = getDashStyle(rowIndex, dashIndex);
-          return (
-            <View
-              key={`${keyPrefix}-ridge-${rowIndex}-${dashIndex}`}
-              style={[
-                styles.stripeDash,
-                styles.snowRidge,
-                { left, top },
-              ]}
-            />
-          );
-        }),
-      )}
-    </View>
-  );
 
   return (
     <View style={styles.container}>
@@ -1053,8 +1064,17 @@ function GameScreen({
         </View>
       ) : null}
 
-      {/* Sınırsız akan sahne - hıza oranlı */}
+      {/* Sabit beyaz zemin + kar parçacıkları (sabit sayı, sadece pozisyon güncellenir) */}
       <View style={styles.stageWrap} pointerEvents="none">
+        <View style={styles.fixedSnowBackground} />
+        <View style={styles.particlesWrap} pointerEvents="none">
+          {particleAnims.map((p, i) => (
+            <Animated.View
+              key={`particle-${i}`}
+              style={[styles.snowParticle, { left: p.x, top: p.y }]}
+            />
+          ))}
+        </View>
         <Animated.View
           style={[
             styles.stage,
@@ -1065,8 +1085,6 @@ function GameScreen({
               ],
             },
           ]}>
-          {renderSegment('a')}
-          <View style={styles.segmentCopy}>{renderSegment('b')}</View>
           {spawns.map(s => {
             if (s.kind === 'obstacle') {
               return <ObstacleView key={s.id} spawn={s as ObstacleSpawn} />;
@@ -1311,22 +1329,20 @@ const styles = StyleSheet.create({
     top: 0,
     height: SEGMENT_HEIGHT * 2,
   },
-  segment: {
-    height: SEGMENT_HEIGHT,
+  fixedSnowBackground: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#ecf0f6',
   },
-  segmentCopy: {
-    height: SEGMENT_HEIGHT,
+  particlesWrap: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
-  stripeDash: {
+  snowParticle: {
     position: 'absolute',
-    width: DASH_WIDTH,
-    height: 1,
-  },
-  snowRidge: {
-    height: 2,
-    backgroundColor: 'rgba(120, 140, 160, 0.18)',
-    width: DASH_WIDTH + 4,
+    width: SNOW_PARTICLE_SIZE,
+    height: SNOW_PARTICLE_SIZE,
+    borderRadius: SNOW_PARTICLE_SIZE / 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
   },
   leftPanel: {
     position: 'absolute',
