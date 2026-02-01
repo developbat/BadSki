@@ -6,6 +6,7 @@
 export type GoodItemId =
   | 'rocket'
   | 'ghost'
+  | 'shield'
   | 'star'
   | 'diamond'
   | 'clover'
@@ -33,7 +34,8 @@ export interface GoodItemDef {
   weight: number;
   durationMs: number;
   points: number;
-  effect: 'super_speed' | 'ghost' | 'speed_boost' | null;
+  /** super_speed = yerden alınca hâlâ anında kullanılmaz (sadece ghost); rocket/shield kutuya gider */
+  effect: 'super_speed' | 'ghost' | 'speed_boost' | 'inventory_rocket' | 'inventory_shield' | null;
 }
 
 export interface BadItemDef {
@@ -51,8 +53,9 @@ export interface BadItemDef {
 
 // —— İYİ OBJELER (emoji, isim, description, ağırlık, süre, puan, etki) ——
 export const GOOD_ITEMS: GoodItemDef[] = [
-  { id: 'rocket', emoji: '🚀', name: 'Roket', description: '🚀 = ⚡ × 2', weight: 8, durationMs: 5000, points: 0, effect: 'super_speed' },
-  { id: 'ghost', emoji: '👻', name: 'Hayalet', description: '👻 = 🛡️', weight: 5, durationMs: 5000, points: 0, effect: 'ghost' },
+  { id: 'rocket', emoji: '🚀', name: 'Roket', description: '🚀 → kutu (kullanınca hız ×2, 5 sn)', weight: 8, durationMs: 5000, points: 0, effect: 'inventory_rocket' },
+  { id: 'ghost', emoji: '👻', name: 'Hayalet', description: '👻 = engellere çarpmaz (anında)', weight: 5, durationMs: 5000, points: 0, effect: 'ghost' },
+  { id: 'shield', emoji: '🛡️', name: 'Kalkan', description: '🛡️ → kutu (çarpmada 1 hak)', weight: 6, durationMs: 0, points: 0, effect: 'inventory_shield' },
   { id: 'star', emoji: '⭐', name: 'Yıldız', description: '⭐ = ⭐ + 50', weight: 12, durationMs: 0, points: 50, effect: null },
   { id: 'diamond', emoji: '💎', name: 'Elmas', description: '💎 = ⭐ + 100', weight: 4, durationMs: 0, points: 100, effect: null },
   { id: 'clover', emoji: '🍀', name: 'Yonca', description: '🍀 = ⭐ + 20', weight: 6, durationMs: 0, points: 20, effect: null },

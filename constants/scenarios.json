@@ -1,0 +1,54 @@
+{
+  "scenarios": [
+    {
+      "id": "delivery",
+      "type": "delivery",
+      "icon": "📦",
+      "distanceMinM": 3000,
+      "distanceMaxM": 7000,
+      "segmentLengthMin": 200,
+      "segmentLengthMax": 550,
+      "curveIntensity": 0.5
+    },
+    {
+      "id": "chase",
+      "type": "chase",
+      "icon": "🏃",
+      "distanceMinM": 1000,
+      "distanceMaxM": 4000,
+      "segmentLengthMin": 180,
+      "segmentLengthMax": 500,
+      "curveIntensity": 0.65
+    },
+    {
+      "id": "escape",
+      "type": "escape",
+      "icon": "🐻",
+      "distanceMinM": 1000,
+      "distanceMaxM": 4000,
+      "segmentLengthMin": 220,
+      "segmentLengthMax": 600,
+      "curveIntensity": 0.7
+    },
+    {
+      "id": "survival",
+      "type": "survival",
+      "icon": "❄️",
+      "distanceMinM": 1000,
+      "distanceMaxM": 4000,
+      "segmentLengthMin": 250,
+      "segmentLengthMax": 580,
+      "curveIntensity": 0.6
+    },
+    {
+      "id": "reach",
+      "type": "reach",
+      "icon": "🎯",
+      "distanceMinM": 1000,
+      "distanceMaxM": 4000,
+      "segmentLengthMin": 300,
+      "segmentLengthMax": 700,
+      "curveIntensity": 0.4
+    }
+  ]
+}

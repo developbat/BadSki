@@ -1,43 +1,48 @@
 /**
- * Oyun pad'i – Sol | Hızlanma | Sağ
- * En altı kaplayan havalı UI, sol/sağ min–max tilt ibresi
+ * Oyun pad'i – Sol | Sağ | (Zıpla ×2 roket üst, Hızlanma alt)
+ * Yön ikonları, şeffaf arka plan (sadece butonlar)
  */
 
 import React from 'react';
-import {View, Pressable, Text, StyleSheet, Dimensions} from 'react-native';
-
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
+import {View, Pressable, Text, StyleSheet} from 'react-native';
 
 type Props = {
   onLeft: () => void;
   onLeftRelease: () => void;
-  onCenter: () => void;
-  onCenterRelease: () => void;
   onRight: () => void;
   onRightRelease: () => void;
+  onAccel: () => void;
+  onAccelRelease: () => void;
+  onJumpPress?: () => void;
+  onJumpRelease?: () => void;
   leftTilt: number;
   rightTilt: number;
+  accelTilt: number;
   disabled: boolean;
 };
 
 function GamePad({
   onLeft,
   onLeftRelease,
-  onCenter,
-  onCenterRelease,
   onRight,
   onRightRelease,
+  onAccel,
+  onAccelRelease,
+  onJumpPress,
+  onJumpRelease,
   leftTilt,
   rightTilt,
+  accelTilt,
   disabled,
 }: Props): React.JSX.Element {
+  const jumpDisabled = disabled || !onJumpPress;
   return (
     <View style={styles.pad} pointerEvents="box-none">
       <View style={styles.padRow}>
+        {/* Sol: ← ikonu + ibre */}
         <Pressable
           style={({pressed}) => [
             styles.padButton,
-            styles.padLeft,
             pressed && styles.padButtonPressed,
             disabled && styles.padButtonDisabled,
           ]}
@@ -49,26 +54,13 @@ function GamePad({
               style={[styles.tiltBarFill, {height: `${leftTilt * 100}%`}]}
             />
           </View>
-          <Text style={styles.padButtonText}>Sol</Text>
+          <Text style={styles.padIcon}>←</Text>
         </Pressable>
 
+        {/* Orta: → ikonu + ibre */}
         <Pressable
           style={({pressed}) => [
             styles.padButton,
-            styles.padCenter,
-            pressed && styles.padButtonPressed,
-            disabled && styles.padButtonDisabled,
-          ]}
-          onPressIn={onCenter}
-          onPressOut={onCenterRelease}
-          disabled={disabled}>
-          <Text style={styles.padButtonText}>Hızlanma</Text>
-        </Pressable>
-
-        <Pressable
-          style={({pressed}) => [
-            styles.padButton,
-            styles.padRight,
             pressed && styles.padButtonPressed,
             disabled && styles.padButtonDisabled,
           ]}
@@ -80,12 +72,52 @@ function GamePad({
               style={[styles.tiltBarFill, {height: `${rightTilt * 100}%`}]}
             />
           </View>
-          <Text style={styles.padButtonText}>Sağ</Text>
+          <Text style={styles.padIcon}>→</Text>
         </Pressable>
+
+        {/* En sağ: üstte zıpla ×2 roket, altta hızlanma */}
+        <View style={styles.padRightColumn}>
+          {onJumpPress != null ? (
+            <Pressable
+              style={({pressed}) => [
+                styles.padButtonSmall,
+                pressed && styles.padButtonPressed,
+                jumpDisabled && styles.padButtonDisabled,
+              ]}
+              onPressIn={onJumpPress}
+              onPressOut={onJumpRelease}
+              disabled={jumpDisabled}>
+              <View style={styles.jumpButtonContent}>
+                <Text style={styles.padIcon}>⬆</Text>
+                <Text style={styles.padIconSmall}>×2</Text>
+                <Text style={styles.padIconSmall}>🚀</Text>
+              </View>
+            </Pressable>
+          ) : null}
+          <Pressable
+            style={({pressed}) => [
+              styles.padButtonSmall,
+              pressed && styles.padButtonPressed,
+              disabled && styles.padButtonDisabled,
+            ]}
+            onPressIn={onAccel}
+            onPressOut={onAccelRelease}
+            disabled={disabled}>
+            <View style={styles.tiltBarBg}>
+              <View
+                style={[styles.tiltBarFill, {height: `${accelTilt * 100}%`}]}
+              />
+            </View>
+            <Text style={styles.padIcon}>⚡</Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
+
+// Entry ekranı arka planı (#0f172a) – şeffaf versiyonu
+const PAD_BG = 'rgba(15, 23, 42, 0.55)';
 
 const styles = StyleSheet.create({
   pad: {
@@ -96,7 +128,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 10,
     paddingHorizontal: 6,
-    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    backgroundColor: PAD_BG,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     zIndex: 15,
@@ -108,7 +140,7 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 5,
+    gap: 6,
   },
   padButton: {
     flex: 1,
@@ -117,25 +149,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    backgroundColor: PAD_BG,
   },
-  padLeft: {
-    backgroundColor: 'rgba(59, 130, 246, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.35)',
+  padButtonSmall: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: PAD_BG,
   },
-  padCenter: {
-    backgroundColor: 'rgba(34, 197, 94, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-  },
-  padRight: {
-    backgroundColor: 'rgba(59, 130, 246, 0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.35)',
+  padRightColumn: {
+    flex: 1,
+    flexDirection: 'column',
+    gap: 4,
   },
   padButtonPressed: {
-    opacity: 0.85,
-    transform: [{scale: 0.97}],
+    opacity: 0.7,
+    transform: [{scale: 0.96}],
   },
   padButtonDisabled: {
     opacity: 0.4,
@@ -143,11 +175,11 @@ const styles = StyleSheet.create({
   tiltBarBg: {
     position: 'absolute',
     left: 4,
-    top: 8,
-    bottom: 8,
-    width: 6,
+    top: 6,
+    bottom: 6,
+    width: 5,
     borderRadius: 3,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
     overflow: 'hidden',
   },
   tiltBarFill: {
@@ -155,13 +187,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.8)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderRadius: 3,
   },
-  padButtonText: {
-    color: '#f1f5f9',
-    fontWeight: '700',
-    fontSize: 13,
+  padIcon: {
+    fontSize: 26,
+    color: 'rgba(241, 245, 249, 0.95)',
+  },
+  padIconSmall: {
+    fontSize: 11,
+    color: 'rgba(241, 245, 249, 0.9)',
+  },
+  jumpButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
   },
 });
 

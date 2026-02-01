@@ -16,6 +16,7 @@ import {
 import {SKYGUY_IMAGES, type SkierState} from '../constants/skyguy';
 import GamePad from '../components/GamePad';
 import ObstacleView, {type ObstacleSpawn} from '../components/ObstacleView';
+import MiniMap from '../components/MiniMap';
 import {
   GOOD_ITEMS,
   BAD_ITEMS,
@@ -52,16 +53,27 @@ import {
   BUBBLE_BACK_TO_NORMAL_MS,
   BUBBLE_SKIING_MIN_MS,
 } from '../constants/emotions';
+import {
+  type Mission,
+  SCENARIO_THEMES,
+  getPathCenterXPx,
+  getPathTurnAhead,
+  SCROLL_TO_METERS,
+  OFF_PATH_THRESHOLD_PX,
+  SPAWN_CHANCE_OBSTACLE_OFF_PATH,
+} from '../constants/missions';
+import { ROCKET_DURATION_MS } from '../constants/upgrades';
+import { useI18n } from '../i18n';
 
 const CLUMSY_DURATION_MS = 500;
 const ACCELERATE_DURATION_MS = 400;
+const BASE_JUMP_DURATION_MS = 700; // Yükseltmeyle artar (initialJumpDurationMs)
 const SEGMENT_HEIGHT = 600;
-const MAX_SPEED = 300;
-// Hızlanma ibresine göre: yeşil +1, sarı +2, kırmızı +5 (tapRate 0–3 yeşil, 4–6 sarı, 7+ kırmızı)
-// Ekran akma hızı: delta = effectiveSpeed × SCROLL_FACTOR (hız arttıkça çizgiler belirgin şekilde hızlı akar)
+const DEFAULT_MAX_SPEED = 50; // Oyun birimi; yükseltmeyle artar
+// Hızlanma: basılı tutma süresi ile ibre dolar; basılıyken bu aralıkla hız eklenir
 const SCROLL_FACTOR = 0.18;
-const TAP_RATE_WINDOW_MS = 1000;
-const MAX_TAP_RATE = 10;
+const ACCEL_RAMP_MS = 260; // Aynı sağa/sola gibi; bu sürede ibre 0→1 dolar
+const ACCEL_ADD_INTERVAL_MS = 120; // Basılı tutarken bu aralıkla hız eklenir
 const DASH_WIDTH = 18;
 const DASH_GAP = 14;
 const WAVE_AMP = 5;
@@ -98,26 +110,86 @@ function pickByWeight<T extends { weight: number }>(items: T[]): T {
   return items[0];
 }
 
-function GameScreen(): React.JSX.Element {
+const EXTRA_LIFE_INVINCIBLE_MS = 1800; // Ekstra can kullanınca kısa süre dokunulmaz
+
+type GameScreenProps = {
+  mission: Mission | null;
+  totalEarned?: number;
+  level?: number;
+  initialMaxSpeed?: number;
+  initialJumpDurationMs?: number;
+  initialRocketCount?: number;
+  initialExtraLivesCount?: number;
+  startWithGhostSeconds?: number;
+  onExit?: (score: number, distanceMeters?: number) => void;
+  onRunEnd?: (score: number) => void;
+  onUseRocket?: () => void;
+  onUseExtraLife?: () => void;
+};
+
+function GameScreen({
+  mission,
+  totalEarned = 0,
+  level = 1,
+  initialMaxSpeed = DEFAULT_MAX_SPEED,
+  initialJumpDurationMs = BASE_JUMP_DURATION_MS,
+  initialRocketCount = 0,
+  initialExtraLivesCount = 0,
+  startWithGhostSeconds = 0,
+  onExit,
+  onRunEnd,
+  onUseRocket,
+  onUseExtraLife,
+}: GameScreenProps): React.JSX.Element {
+  const { t } = useI18n();
+  const maxSpeedRef = useRef(initialMaxSpeed);
+  maxSpeedRef.current = initialMaxSpeed;
+  const jumpDurationMsRef = useRef(initialJumpDurationMs);
+  jumpDurationMsRef.current = initialJumpDurationMs;
+  const reduceGhostRocketDropRef = useRef(initialRocketCount > 0 || startWithGhostSeconds > 0);
+  reduceGhostRocketDropRef.current = initialRocketCount > 0 || startWithGhostSeconds > 0;
   const [state, setState] = useState<SkierState>('stand');
+  const [gameWon, setGameWon] = useState(false);
+  const gameWonRef = useRef(false);
+  const [completionBonus, setCompletionBonus] = useState(0);
+  const [rocketFlash, setRocketFlash] = useState(false);
+  const [shieldFlash, setShieldFlash] = useState(false);
+  const [distanceTraveledMeters, setDistanceTraveledMeters] = useState(0);
+  const [isOffPath, setIsOffPath] = useState(false);
+  const [pathTurnAhead, setPathTurnAhead] = useState<'left' | 'right' | null>(null);
   const [speed, setSpeed] = useState(0);
-  const [tapRate, setTapRate] = useState(0);
+  const [accelHold, setAccelHold] = useState(0); // 0..1, basılı tutma ile dolar
   const hasCenterPressed = useRef(false);
   const speedRef = useRef(0);
   const scrollOffsetRef = useRef(0);
   const scrollAnim = useRef(new Animated.Value(0)).current;
   const stageTranslateX = useRef(new Animated.Value(0)).current;
   const isDisabledRef = useRef(false);
-  const tapTimestampsRef = useRef<number[]>([]);
-  const tapRateRef = useRef(0);
+  const accelPressedAtRef = useRef(0);
+  const lastAccelAddRef = useRef(0);
+  const lastJumpTapRef = useRef(0);
+  const jumpPressedAtRef = useRef(0);
+  const JUMP_DOUBLE_TAP_MS = 400;
+  const JUMP_HOLD_THRESHOLD_MS = 200; // Basılı tutma eşiği
   const [score, setScore] = useState(0);
+  const scoreRef = useRef(0);
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
   const [spawns, setSpawns] = useState<Spawn[]>([]);
   const spawnsRef = useRef<Spawn[]>([]);
   const spawnIdRef = useRef(0);
   const lastSpawnedScrollRef = useRef(0);
   const totalScrollRef = useRef(0);
   const stateRef = useRef(state);
+  const lastHitWasTreeRef = useRef(false); // Ağaç → fall-florr-back, kaya → fall-florr
+  const jumpUntilRef = useRef(0); // Zıplarken kaya çarpması sayılmaz
   const ghostUntilRef = useRef(0);
+  useEffect(() => {
+    if (startWithGhostSeconds > 0) {
+      ghostUntilRef.current = Date.now() + startWithGhostSeconds * 1000;
+    }
+  }, [startWithGhostSeconds]);
   const superSpeedUntilRef = useRef(0);
   const speedBoostUntilRef = useRef(0);
   const speedBoostAmountRef = useRef(0); // Toplam +40 bonus (süre bitince veya iptal tek seferde düşsün)
@@ -142,31 +214,50 @@ function GameScreen(): React.JSX.Element {
   const [popupMessage, setPopupMessage] = useState<string | null>(null);
   const popupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [buffRemaining, setBuffRemaining] = useState({ ghost: 0, superSpeed: 0, speedBoost: 0 });
+  const [rocketCount, setRocketCount] = useState(initialRocketCount);
+  const [extraLivesCount, setExtraLivesCount] = useState(initialExtraLivesCount);
+  const extraLivesCountRef = useRef(initialExtraLivesCount);
+  extraLivesCountRef.current = extraLivesCount;
+  const invincibleUntilRef = useRef(0); // Ekstra can sonrası kısa süre dokunulmaz
   const lastGoodBubbleAtRef = useRef(0);
   const lastBadBubbleAtRef = useRef(0);
   const closeCallBubbleAtRef = useRef(0);
   const lastNervousAtRef = useRef(0);
   const lastSkiingAtRef = useRef(0);
   const lastBubbleCharRef = useRef<string | null>(null);
+  /** Mevcut balon mood’u – interval tek olsun diye ref; emoji başka duruma geçmeden değişmez */
+  const bubbleMoodRef = useRef<string | null>(null);
   const [bubbleEmoji, setBubbleEmoji] = useState<'happy' | 'sad' | 'scared' | 'panic' | 'nervous' | 'skiing' | 'backToNormal' | null>(null);
   const [bubbleChar, setBubbleChar] = useState<string>('');
 
   speedRef.current = speed;
   stateRef.current = state;
-  isDisabledRef.current = state === 'clumsy' || state === 'fall-florr';
+  isDisabledRef.current =
+    state === 'clumsy' ||
+    state === 'fall-florr' ||
+    state === 'fall-florr-back' ||
+    state === 'jump';
   spawnsRef.current = spawns;
+  gameWonRef.current = gameWon;
 
-  // Tab hızı göstergesi: son 1 saniyedeki basış sayısını güncelle (ibre + hızlanma oranı için)
+  // Hızlanma ibresi: basılı tutma süresi ile 0..1 dolar; basılıyken sürekli hız eklenir
   useEffect(() => {
     const id = setInterval(() => {
+      const at = accelPressedAtRef.current;
       const now = Date.now();
-      tapTimestampsRef.current = tapTimestampsRef.current.filter(
-        t => now - t < TAP_RATE_WINDOW_MS,
-      );
-      const rate = tapTimestampsRef.current.length;
-      tapRateRef.current = rate;
-      setTapRate(rate);
-    }, 150);
+      if (at === 0) {
+        setAccelHold(0);
+        return;
+      }
+      const elapsed = now - at;
+      const hold = Math.min(1, elapsed / ACCEL_RAMP_MS);
+      setAccelHold(hold);
+      if (now - lastAccelAddRef.current >= ACCEL_ADD_INTERVAL_MS) {
+        lastAccelAddRef.current = now;
+        const add = hold < 1 / 3 ? 1 : hold < 2 / 3 ? 2 : 5;
+        setSpeed((s) => Math.min(maxSpeedRef.current, s + add));
+      }
+    }, 50);
     return () => clearInterval(id);
   }, []);
 
@@ -176,10 +267,21 @@ function GameScreen(): React.JSX.Element {
     return () => clearTimeout(t);
   }, []);
 
-  // clumsy → fall-florr (düşme)
+  // clumsy → fall-florr (kaya) veya fall-florr-back (ağaç)
   useEffect(() => {
     if (state !== 'clumsy') return;
-    const t = setTimeout(() => setState('fall-florr'), CLUMSY_DURATION_MS);
+    const t = setTimeout(
+      () => setState(lastHitWasTreeRef.current ? 'fall-florr-back' : 'fall-florr'),
+      CLUMSY_DURATION_MS
+    );
+    return () => clearTimeout(t);
+  }, [state]);
+
+  // jump → stand-ski (zıplama bitti; süre yükseltmeyle artar)
+  useEffect(() => {
+    if (state !== 'jump') return;
+    const ms = jumpDurationMsRef.current;
+    const t = setTimeout(() => setState('stand-ski'), ms);
     return () => clearTimeout(t);
   }, [state]);
 
@@ -235,85 +337,155 @@ function GameScreen(): React.JSX.Element {
         superSpeed: Math.max(0, Math.ceil((superSpeedUntilRef.current - now) / 1000)),
         speedBoost: Math.max(0, Math.ceil((speedBoostUntilRef.current - now) / 1000)),
       });
+      const d = totalScrollRef.current * SCROLL_TO_METERS;
+      if (mission) {
+        setDistanceTraveledMeters(d);
+        if (mission.points.length > 0) {
+          const pathCenterX = getPathCenterXPx(d, mission.points);
+          const skierX = skierOffsetXRef.current + worldPanXRef.current;
+          setIsOffPath(Math.abs(skierX - pathCenterX) > OFF_PATH_THRESHOLD_PX);
+          setPathTurnAhead(getPathTurnAhead(d, mission.points));
+        } else {
+          setIsOffPath(false);
+          setPathTurnAhead(null);
+        }
+      } else {
+        setDistanceTraveledMeters(d);
+        setIsOffPath(false);
+        setPathTurnAhead(null);
+      }
     }, 400);
     return () => clearInterval(id);
-  }, []);
+  }, [mission]);
 
-  // Düşünce balonu: duruma göre yüz emojisi (öncelik: panik > korku > mutsuz > mutlu > rasgele tedirgin)
+  // Düşünce balonu: bir şey olmadan emoji değişmez. Her durumda 1 emoji seçilir, o kalır.
+  // Öncelik: panik > korku > mutsuz > mutlu > normale dönüş > tedirgin (sadece normal sürüşte) > kayak.
+  // Normal sürüşte (kayak) sadece BUBBLE_SKIING_MIN_MS sonra yeni emoji seçilebilir (hızlandı daha fazla değişebilir).
   useEffect(() => {
     const id = setInterval(() => {
       const now = Date.now();
       const spd = speedRef.current;
       const disabled = isDisabledRef.current;
       if (disabled) {
+        bubbleMoodRef.current = null;
         setBubbleEmoji(null);
         setBubbleChar('');
         return;
       }
+
+      const mood = bubbleMoodRef.current;
+
+      // 1) Panik (engel yanından geçiş): ilk geçişte 1 emoji seç, o kalır
       if (now - closeCallBubbleAtRef.current < BUBBLE_PANIC_MS) {
-        const picked = pickThoughtEmoji(EMOTIONS_PANIC, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('panic');
-        setBubbleChar(picked);
+        if (mood !== 'panic') {
+          const picked = pickThoughtEmoji(EMOTIONS_PANIC, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'panic';
+          setBubbleEmoji('panic');
+          setBubbleChar(picked);
+        }
         return;
       }
+
+      // 2) Korku (hız yüksek): ilk geçişte 1 emoji seç, o kalır
       if (spd >= SPEED_SCARED_THRESHOLD) {
-        const picked = pickThoughtEmoji(EMOTIONS_SCARED, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('scared');
-        setBubbleChar(picked);
+        if (mood !== 'scared') {
+          const picked = pickThoughtEmoji(EMOTIONS_SCARED, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'scared';
+          setBubbleEmoji('scared');
+          setBubbleChar(picked);
+        }
         return;
       }
+
+      // 3) Mutsuz (kötü item): ilk geçişte 1 emoji seç, o kalır
       if (now - lastBadBubbleAtRef.current < BUBBLE_BAD_MS) {
-        const picked = pickThoughtEmoji(EMOTIONS_SAD, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('sad');
-        setBubbleChar(picked);
+        if (mood !== 'sad') {
+          const picked = pickThoughtEmoji(EMOTIONS_SAD, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'sad';
+          setBubbleEmoji('sad');
+          setBubbleChar(picked);
+        }
         return;
       }
+
+      // 4) Mutlu (iyi item): ilk geçişte 1 emoji seç, o kalır
       if (now - lastGoodBubbleAtRef.current < BUBBLE_GOOD_MS) {
-        const picked = pickThoughtEmoji(EMOTIONS_HAPPY, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('happy');
-        setBubbleChar(picked);
+        if (mood !== 'happy') {
+          const picked = pickThoughtEmoji(EMOTIONS_HAPPY, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'happy';
+          setBubbleEmoji('happy');
+          setBubbleChar(picked);
+        }
         return;
       }
+
+      // 5) Normale dönüş (mutsuzluk bittikten sonra kısa süre): ilk geçişte 1 emoji seç, o kalır
       const badEndedAt = lastBadBubbleAtRef.current + BUBBLE_BAD_MS;
       if (lastBadBubbleAtRef.current > 0 && now > badEndedAt && now - badEndedAt < BUBBLE_BACK_TO_NORMAL_MS) {
-        const picked = pickThoughtEmoji(EMOTIONS_BACK_TO_NORMAL, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('backToNormal');
-        setBubbleChar(picked);
+        if (mood !== 'backToNormal') {
+          const picked = pickThoughtEmoji(EMOTIONS_BACK_TO_NORMAL, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'backToNormal';
+          setBubbleEmoji('backToNormal');
+          setBubbleChar(picked);
+        }
         return;
       }
-      if (lastNervousAtRef.current > 0 && now - lastNervousAtRef.current <= BUBBLE_NERVOUS_MS) {
-        return;
+
+      // 6) Tedirgin: sadece normal sürüşte (kayak mood) ve cooldown dolunca rastgele; 1 emoji seç, o kalır
+      if (mood === 'nervous' && now - lastNervousAtRef.current <= BUBBLE_NERVOUS_MS) {
+        return; // tedirgin penceresi devam ediyor, emoji değişmez
       }
-      if (bubbleEmoji === 'nervous' && now - lastNervousAtRef.current > BUBBLE_NERVOUS_MS) {
-        setBubbleEmoji(null);
-        setBubbleChar('');
-        return;
-      }
-      if (Math.random() < BUBBLE_NERVOUS_CHANCE && now - lastNervousAtRef.current > BUBBLE_NERVOUS_COOLDOWN_MS) {
-        lastNervousAtRef.current = now;
-        const picked = pickThoughtEmoji(EMOTIONS_NERVOUS, lastBubbleCharRef.current);
-        lastBubbleCharRef.current = picked;
-        setBubbleEmoji('nervous');
-        setBubbleChar(picked);
-        return;
-      }
-      if (lastSkiingAtRef.current === 0 || now - lastSkiingAtRef.current >= BUBBLE_SKIING_MIN_MS) {
+      if (mood === 'nervous' && now - lastNervousAtRef.current > BUBBLE_NERVOUS_MS) {
+        // tedirgin bitti → kayak moduna geç, 1 emoji seç (balonu silme)
         const picked = pickThoughtEmoji(EMOTIONS_SKIING, lastBubbleCharRef.current);
         lastBubbleCharRef.current = picked;
         lastSkiingAtRef.current = now;
+        bubbleMoodRef.current = 'skiing';
         setBubbleEmoji('skiing');
         setBubbleChar(picked);
         return;
       }
-      return;
-    }, 280);
+      // Tedirgin: sadece hareket varken (hız > 0), beklerken tetiklenmez
+      if (spd > 0 && (mood === 'skiing' || mood === null) && now - lastNervousAtRef.current > BUBBLE_NERVOUS_COOLDOWN_MS) {
+        if (Math.random() < BUBBLE_NERVOUS_CHANCE) {
+          lastNervousAtRef.current = now;
+          const picked = pickThoughtEmoji(EMOTIONS_NERVOUS, lastBubbleCharRef.current);
+          lastBubbleCharRef.current = picked;
+          bubbleMoodRef.current = 'nervous';
+          setBubbleEmoji('nervous');
+          setBubbleChar(picked);
+          return;
+        }
+        // Tetiklenmediyse aşağıdaki kayak bloğuna düş (normal sürüşte emoji değişimi)
+      }
+
+      // 7) Normal kayak: oyun başında veya başka durumdan dönünce 1 emoji seç; normal sürüşte sadece BUBBLE_SKIING_MIN_MS sonra değişebilir
+      const skiingIntervalPassed = lastSkiingAtRef.current === 0 || now - lastSkiingAtRef.current >= BUBBLE_SKIING_MIN_MS;
+      if (mood !== 'skiing') {
+        // Kayak moduna ilk geçiş: 1 emoji seç, o kalır
+        const picked = pickThoughtEmoji(EMOTIONS_SKIING, lastBubbleCharRef.current);
+        lastBubbleCharRef.current = picked;
+        lastSkiingAtRef.current = now;
+        bubbleMoodRef.current = 'skiing';
+        setBubbleEmoji('skiing');
+        setBubbleChar(picked);
+        return;
+      }
+      if (skiingIntervalPassed && spd > 0) {
+        // Zaten kayak modunda, süre doldu ve hareket var: normal sürüşte hızlandı daha fazla değişebilir. Beklerken (hız 0) emoji değişmez.
+        const picked = pickThoughtEmoji(EMOTIONS_SKIING, lastBubbleCharRef.current);
+        lastBubbleCharRef.current = picked;
+        lastSkiingAtRef.current = now;
+        setBubbleChar(picked);
+      }
+    }, 400);
     return () => clearInterval(id);
-  }, [bubbleEmoji]);
+  }, []);
 
   // Sınırsız sahne akışı, tuzak spawn, tilt oranlı, çarpışma
   useEffect(() => {
@@ -324,6 +496,9 @@ function GameScreen(): React.JSX.Element {
       const spd = speedRef.current;
       const disabled = isDisabledRef.current;
       const st = stateRef.current;
+      // Zıplarken frame akmaya ve hız devam eder; sadece clumsy/fall'da dünya durur
+      const worldPaused =
+        st === 'clumsy' || st === 'fall-florr' || st === 'fall-florr-back';
       let tiltPx = 0;
       if (st === 'left-ski' && leftPressedAtRef.current > 0) {
         const elapsed = now - leftPressedAtRef.current;
@@ -381,7 +556,7 @@ function GameScreen(): React.JSX.Element {
         worldPanXAnim.setValue(worldPanXRef.current);
       }
 
-      if (!disabled && effectiveSpeed > 0) {
+      if (!worldPaused && effectiveSpeed > 0) {
         if (slideStartTimeRef.current === null) slideStartTimeRef.current = now;
         const delta = effectiveSpeed * SCROLL_FACTOR;
         scrollOffsetRef.current += delta;
@@ -407,9 +582,37 @@ function GameScreen(): React.JSX.Element {
       const scrollNow = scrollOffsetRef.current;
       const totalScroll = totalScrollRef.current;
 
-      // Spawn: daha seyrek aralık + her sahnede şans faktörü (bazen hiç çıkmaz)
+      if (mission && !gameWonRef.current) {
+        const distanceMeters = totalScroll * SCROLL_TO_METERS;
+        if (distanceMeters >= mission.distanceMeters) {
+          gameWonRef.current = true;
+          setGameWon(true);
+          // Tamamlama bonusu: mesafe (km başına 50) + zorluk (curveIntensity × 100)
+          const distanceBonus = Math.round((mission.distanceMeters / 1000) * 50);
+          const theme = SCENARIO_THEMES.find(t => t.id === mission.scenarioId);
+          const difficultyBonus = theme ? Math.round(theme.curveIntensity * 100) : 0;
+          const totalBonus = distanceBonus + difficultyBonus;
+          setCompletionBonus(totalBonus);
+          setScore(prev => prev + totalBonus);
+        }
+      }
+
+      // Spawn: path dışındaysa daha çok engel
+      const obstacleChance =
+        mission && mission.points.length > 0
+          ? (() => {
+              const distanceMeters = totalScroll * SCROLL_TO_METERS;
+              const pathCenterX = getPathCenterXPx(distanceMeters, mission.points);
+              const skierOffsetFromPath =
+                skierOffsetXRef.current + worldPanXRef.current - pathCenterX;
+              return Math.abs(skierOffsetFromPath) > OFF_PATH_THRESHOLD_PX
+                ? SPAWN_CHANCE_OBSTACLE_OFF_PATH
+                : SPAWN_CHANCE_OBSTACLE;
+            })()
+          : SPAWN_CHANCE_OBSTACLE;
+
       if (
-        !disabled &&
+        !worldPaused &&
         spd > 0 &&
         totalScroll - lastSpawnedScrollRef.current > SPAWN_INTERVAL_PX
       ) {
@@ -418,7 +621,7 @@ function GameScreen(): React.JSX.Element {
           const worldY =
             scrollNow - SCREEN_HEIGHT - 320 + Math.random() * 200;
           const roll = Math.random() * 100;
-          if (roll < SPAWN_CHANCE_OBSTACLE) {
+          if (roll < obstacleChance) {
             // Engel: 1, 2 veya 3 yan yana (şans faktörüne göre)
             const sideRoll = Math.random();
             const count = sideRoll < OBSTACLE_SIDE_BY_SIDE_3_CHANCE ? 3
@@ -449,7 +652,14 @@ function GameScreen(): React.JSX.Element {
             setSpawns(next);
           } else if (roll < SPAWN_CHANCE_OBSTACLE + SPAWN_CHANCE_GOOD) {
             const worldX = SCREEN_WIDTH * 0.2 + Math.random() * SCREEN_WIDTH * 0.6;
-            const itemId = pickByWeight(GOOD_ITEMS).id;
+            const goodPool = reduceGhostRocketDropRef.current
+              ? GOOD_ITEMS.map((i) =>
+                  i.id === 'ghost' || i.id === 'rocket'
+                    ? { ...i, weight: Math.max(1, Math.floor(i.weight / 3)) }
+                    : i
+                )
+              : GOOD_ITEMS;
+            const itemId = pickByWeight(goodPool).id;
             const next = [...spawnsRef.current, {
               id: `spawn-${++spawnIdRef.current}`,
               kind: 'good' as const,
@@ -493,9 +703,10 @@ function GameScreen(): React.JSX.Element {
         if (amt > 0) setSpeed(prev => Math.max(0, prev - amt));
       }
 
-      // Çarpışma: engeller görsel dikdörtgenle (taş/ağaç aynı), emoji spawn merkeziyle
-      if (!disabled) {
+      // Çarpışma: engeller görsel dikdörtgenle (taş/ağaç aynı), emoji spawn merkeziyle (zıplarken de çalışır)
+      if (!worldPaused) {
         const ghost = now < ghostUntilRef.current;
+        const invincible = now < invincibleUntilRef.current; // Ekstra can sonrası
         const skierX = SCREEN_WIDTH / 2 + skierOffsetXRef.current;
         const skierLeft = skierX - SKIER_HIT_RANGE_X;
         const skierRight = skierX + SKIER_HIT_RANGE_X;
@@ -546,15 +757,31 @@ function GameScreen(): React.JSX.Element {
           if (!hit) continue;
 
           if (s.kind === 'obstacle') {
+            const isTree = (s.itemId as string).startsWith('tree');
+            // Zıplarken kayaya çarpmayı sayma – kayanın üzerinden geç
+            if (!isTree && now < jumpUntilRef.current) {
+              break; // Zıplayarak kayadan kaçtı, engel kaybolmasın
+            }
             const obs = getObstacleById(s.itemId as string);
             if (obs?.description) setPopupMessage(obs.description);
-            if (!ghost) {
-              slideEndTimeRef.current = now; // Taş veya ağaç: oyun biter, süre durur
-              setState('clumsy');
+            
+            // Engeller artık kaybolmaz (ne ağaç ne kaya)
+            
+            if (ghost || invincible) {
+              break; // Hayalet veya ekstra can sonrası dokunulmaz: düşme
             }
-            const next = spawnsRef.current.filter(x => x.id !== s.id);
-            spawnsRef.current = next;
-            setSpawns(next);
+            if (extraLivesCountRef.current > 0) {
+              extraLivesCountRef.current -= 1;
+              setExtraLivesCount(extraLivesCountRef.current);
+              setShieldFlash(true);
+              setTimeout(() => setShieldFlash(false), 400);
+              onUseExtraLife?.();
+              invincibleUntilRef.current = now + EXTRA_LIFE_INVINCIBLE_MS;
+              break; // Bir can tüketildi, kaldığı yerden devam
+            }
+            lastHitWasTreeRef.current = isTree;
+            slideEndTimeRef.current = now;
+            setState('clumsy');
             break;
           }
           if (s.kind === 'good') {
@@ -562,11 +789,17 @@ function GameScreen(): React.JSX.Element {
             if (def) {
               setPopupMessage(def.description);
               if (def.points) setScore(prev => prev + def.points);
-              if (def.effect === 'ghost') ghostUntilRef.current = now + def.durationMs;
-              if (def.effect === 'super_speed') superSpeedUntilRef.current = now + def.durationMs;
-              if (def.effect === 'speed_boost') {
+              if (def.effect === 'inventory_rocket') {
+                setRocketCount((c) => c + 1);
+              } else if (def.effect === 'inventory_shield') {
+                setExtraLivesCount((c) => c + 1);
+              } else if (def.effect === 'ghost') {
+                ghostUntilRef.current = now + def.durationMs;
+              } else if (def.effect === 'super_speed') {
+                superSpeedUntilRef.current = now + def.durationMs;
+              } else if (def.effect === 'speed_boost') {
                 const add = SPEED_BOOST_ADD;
-                setSpeed(prev => Math.min(MAX_SPEED, prev + add));
+                setSpeed(prev => Math.min(maxSpeedRef.current, prev + add));
                 speedBoostAmountRef.current += add;
                 speedBoostUntilRef.current = now + def.durationMs;
               }
@@ -618,16 +851,50 @@ function GameScreen(): React.JSX.Element {
 
   const handleFall = useCallback(() => setState('clumsy'), []);
 
-  const handleCenterPress = useCallback(() => {
+  const handleJumpPress = useCallback(() => {
+    const now = Date.now();
+    jumpPressedAtRef.current = now;
+    
+    // Hızlı çift tıklama kontrolü: roket varsa turbo aktif et
+    if (now - lastJumpTapRef.current < JUMP_DOUBLE_TAP_MS && rocketCount > 0) {
+      lastJumpTapRef.current = 0;
+      jumpPressedAtRef.current = 0; // Basılı tutma iptal
+      superSpeedUntilRef.current = now + ROCKET_DURATION_MS;
+      setRocketCount((c) => c - 1);
+      setRocketFlash(true);
+      setTimeout(() => setRocketFlash(false), 400);
+      onUseRocket?.();
+      return;
+    }
+    
+    lastJumpTapRef.current = now;
+  }, [rocketCount, onUseRocket]);
+
+  const handleJumpRelease = useCallback(() => {
+    const now = Date.now();
+    const pressDuration = now - jumpPressedAtRef.current;
+    jumpPressedAtRef.current = 0;
+    
+    // Basılı tutma süresi eşiği geçtiyse ve disabled değilse zıpla
+    if (pressDuration >= JUMP_HOLD_THRESHOLD_MS && !isDisabledRef.current) {
+      setState('jump');
+      jumpUntilRef.current = now + jumpDurationMsRef.current;
+    }
+  }, []);
+
+  const handleAccelPress = useCallback(() => {
     hasCenterPressed.current = true;
     setState('stand');
-    const r = tapRateRef.current;
-    const add = r >= 7 ? 5 : r >= 4 ? 2 : 1; // yeşil +1, sarı +2, kırmızı +5
-    setSpeed(s => Math.min(MAX_SPEED, s + add));
-    tapTimestampsRef.current.push(Date.now());
+    accelPressedAtRef.current = Date.now();
+  }, []);
+
+  const handleAccelRelease = useCallback(() => {
+    accelPressedAtRef.current = 0;
+    setAccelHold(0);
   }, []);
 
   const handleRestart = useCallback(() => {
+    onRunEnd?.(scoreRef.current);
     setState('stand');
     setSpeed(0);
     setScore(0);
@@ -652,6 +919,10 @@ function GameScreen(): React.JSX.Element {
     skierOffsetXAnim.setValue(0);
     leftPressedAtRef.current = 0;
     rightPressedAtRef.current = 0;
+    accelPressedAtRef.current = 0;
+    lastJumpTapRef.current = 0;
+    jumpPressedAtRef.current = 0;
+    setAccelHold(0);
     leftTiltRef.current = 0;
     rightTiltRef.current = 0;
     lastGoodBubbleAtRef.current = 0;
@@ -662,11 +933,18 @@ function GameScreen(): React.JSX.Element {
     lastBubbleCharRef.current = null;
     lastNervousAtRef.current = 0;
     lastSkiingAtRef.current = 0;
+    setGameWon(false);
+    gameWonRef.current = false;
+    setDistanceTraveledMeters(0);
     worldPanXRef.current = 0;
     worldPanXAnim.setValue(0);
-  }, []);
+  }, [onRunEnd]);
 
-  const isDisabled = state === 'clumsy' || state === 'fall-florr';
+  const isDisabled =
+    state === 'clumsy' ||
+    state === 'fall-florr' ||
+    state === 'fall-florr-back' ||
+    state === 'jump';
 
   // Kar dokusu: satır bazlı hafif ton farkı + dash kalınlığı/opaklık varyasyonu
   const getDashStyle = (rowIndex: number, dashIndex: number) => {
@@ -726,6 +1004,55 @@ function GameScreen(): React.JSX.Element {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#e8eef4" />
 
+      {mission ? (
+        <MiniMap
+          mission={mission}
+          distanceTraveledMeters={distanceTraveledMeters}
+          isOffPath={isOffPath}
+          scenarioLabel={t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+        />
+      ) : null}
+
+      {/* Dönüşe gelirken üstte yön oku */}
+      {mission && pathTurnAhead ? (
+        <View style={styles.pathArrowWrap} pointerEvents="none">
+          <Text style={styles.pathArrow}>
+            {pathTurnAhead === 'left' ? '←' : '→'}
+          </Text>
+        </View>
+      ) : null}
+
+      {gameWon && mission ? (
+        <View style={styles.winOverlay}>
+          <Text style={styles.winTitle}>🎉 {t('game_goalReached')} 🎉</Text>
+          <View style={styles.winMissionCard}>
+            <Text style={styles.winMissionIcon}>
+              {SCENARIO_THEMES.find(t => t.id === mission.scenarioId)?.icon ?? '🎯'}
+            </Text>
+            <Text style={styles.winMissionName}>
+              {t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+            </Text>
+            <Text style={styles.winMissionDistance}>
+              {(mission.distanceMeters / 1000).toFixed(1)} km
+            </Text>
+          </View>
+          <Text style={styles.winMissionComplete}>{t('game_missionComplete')}</Text>
+          {completionBonus > 0 ? (
+            <Text style={styles.winBonus}>{t('game_completionBonus', { bonus: completionBonus })}</Text>
+          ) : null}
+          <View style={styles.winButtonRow}>
+            <Pressable style={[styles.winButton, styles.winButtonSecondary]} onPress={() => onExit?.(scoreRef.current, undefined)}>
+              <Text style={styles.winButtonIcon}>🚪</Text>
+              <Text style={styles.winButtonText}>{t('game_backToMenu')}</Text>
+            </Pressable>
+            <Pressable style={[styles.winButton, styles.winButtonPrimary]} onPress={handleRestart}>
+              <Text style={styles.winButtonIcon}>🔄</Text>
+              <Text style={styles.winButtonText}>{t('game_playAgain')}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       {/* Sınırsız akan sahne - hıza oranlı */}
       <View style={styles.stageWrap} pointerEvents="none">
         <Animated.View
@@ -759,8 +1086,26 @@ function GameScreen(): React.JSX.Element {
         </Animated.View>
       </View>
 
-      {/* Sol orta: kompakt panel – hız, yıldız+puan, saat+süre, boş yuvarlak+item */}
+      {/* Sol orta: kompakt panel – lv, toplam kazanç, mesafe (serbest kay), hız, koşu puanı, süre, son item */}
       <View style={styles.leftPanel}>
+        <View style={styles.leftPanelRow}>
+          <Text style={styles.leftPanelIcon}>Lv</Text>
+          <Text style={styles.leftPanelValue}>{level}</Text>
+        </View>
+        <View style={styles.leftPanelRow}>
+          <Text style={styles.leftPanelIcon}>📈</Text>
+          <Text style={styles.leftPanelValue}>{totalEarned}</Text>
+        </View>
+        {mission === null ? (
+          <View style={styles.leftPanelRow}>
+            <Text style={styles.leftPanelIcon}>📏</Text>
+            <Text style={styles.leftPanelValue}>
+              {distanceTraveledMeters >= 1000
+                ? `${(distanceTraveledMeters / 1000).toFixed(1)} km`
+                : `${Math.round(distanceTraveledMeters)} m`}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.leftPanelRow}>
           <Text style={styles.leftPanelIcon}>⚡</Text>
           <Text style={styles.leftPanelValue}>{speed.toFixed(0)}</Text>
@@ -784,8 +1129,9 @@ function GameScreen(): React.JSX.Element {
         </View>
       </View>
 
-      {/* Sağa yaslı, minimal boşluk: hız tüpü */}
+      {/* Sağa yaslı: max hız üstte, hız tüpü, anlık hız altta */}
       <View style={styles.speedTubeWrap}>
+        <Text style={styles.speedTubeMax}>{maxSpeedRef.current}</Text>
         <View style={styles.speedTubeOuter}>
           <View style={styles.speedTubeZones}>
             <View style={[styles.speedTubeZone, styles.speedBarGreen]} />
@@ -796,11 +1142,11 @@ function GameScreen(): React.JSX.Element {
             style={[
               styles.speedTubeFill,
               {
-                height: `${Math.min(100, (tapRate / MAX_TAP_RATE) * 100)}%`,
+                height: `${accelHold * 100}%`,
                 backgroundColor:
-                  tapRate >= 7
+                  accelHold >= 2 / 3
                     ? 'rgba(239, 68, 68, 0.8)'
-                    : tapRate >= 4
+                    : accelHold >= 1 / 3
                       ? 'rgba(234, 179, 8, 0.8)'
                       : 'rgba(34, 197, 94, 0.8)',
               },
@@ -808,6 +1154,34 @@ function GameScreen(): React.JSX.Element {
           />
         </View>
         <Text style={styles.speedTubeValue}>{speed.toFixed(0)}</Text>
+      </View>
+
+      {/* Sağda: roket + kalkan slotları (yoksa ×0, varsa adet) */}
+      <View style={styles.inventoryWrap}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.inventorySlot,
+            (isDisabled || rocketCount <= 0) && styles.inventorySlotDisabled,
+            pressed && !isDisabled && rocketCount > 0 && styles.inventorySlotPressed,
+            rocketFlash && styles.inventorySlotFlash,
+          ]}
+          onPress={() => {
+            if (isDisabled || rocketCount <= 0) return;
+            const now = Date.now();
+            superSpeedUntilRef.current = now + ROCKET_DURATION_MS;
+            setRocketCount((c) => c - 1);
+            setRocketFlash(true);
+            setTimeout(() => setRocketFlash(false), 400);
+            onUseRocket?.();
+          }}
+          disabled={isDisabled}>
+          <Text style={styles.inventoryEmoji}>🚀</Text>
+          <Text style={styles.inventoryCount}>×{rocketCount}</Text>
+        </Pressable>
+        <View style={[styles.inventorySlot, shieldFlash && styles.inventorySlotFlash]}>
+          <Text style={styles.inventoryEmoji}>🛡️</Text>
+          <Text style={styles.inventoryCount}>×{extraLivesCount}</Text>
+        </View>
       </View>
 
       {/* Popup: item/engel açıklaması (şeffaf balon) */}
@@ -819,19 +1193,29 @@ function GameScreen(): React.JSX.Element {
         </View>
       ) : null}
 
-      {/* Sağ üst: Reset */}
+      {/* Sağ üst: Çıkış (kapı) + Yeniden başlat (reload) */}
       <View style={styles.topRight}>
-        {state === 'fall-florr' ? (
-          <Pressable style={styles.resetButton} onPress={handleRestart}>
-            <Text style={styles.buttonLabel}>Reset</Text>
+        {onExit ? (
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => {
+              const dist = mission === null ? Math.round(totalScrollRef.current * SCROLL_TO_METERS) : undefined;
+              onExit(scoreRef.current, dist);
+            }}>
+            <Text style={styles.iconButtonText}>🚪</Text>
           </Pressable>
-        ) : state === 'clumsy' ? (
-          <View style={styles.resetButtonDisabled}>
-            <Text style={styles.buttonLabel}>...</Text>
+        ) : null}
+        {state === 'fall-florr' || state === 'fall-florr-back' ? (
+          <Pressable style={styles.iconButton} onPress={handleRestart}>
+            <Text style={styles.iconButtonText}>🔄</Text>
+          </Pressable>
+        ) : state === 'clumsy' || state === 'jump' ? (
+          <View style={styles.iconButtonDisabled}>
+            <Text style={styles.iconButtonText}>...</Text>
           </View>
         ) : (
-          <Pressable style={styles.resetButton} onPress={handleFall}>
-            <Text style={styles.buttonLabel}>Reset</Text>
+          <Pressable style={styles.iconButton} onPress={handleFall}>
+            <Text style={styles.iconButtonText}>🔄</Text>
           </Pressable>
         )}
       </View>
@@ -874,7 +1258,7 @@ function GameScreen(): React.JSX.Element {
           <View style={styles.skierFrame}>
             <Image
               source={SKYGUY_IMAGES[state]}
-              style={state === 'right-ski' ? styles.skierSmall : styles.skier}
+              style={state === 'right-ski' ? styles.skier : styles.skier}
               resizeMode="contain"
             />
           </View>
@@ -890,8 +1274,6 @@ function GameScreen(): React.JSX.Element {
           leftPressedAtRef.current = 0;
           setState('stand-ski');
         }}
-        onCenter={handleCenterPress}
-        onCenterRelease={() => {}}
         onRight={() => {
           rightPressedAtRef.current = Date.now();
           setState('right-ski');
@@ -900,8 +1282,13 @@ function GameScreen(): React.JSX.Element {
           rightPressedAtRef.current = 0;
           setState('stand-ski');
         }}
+        onAccel={handleAccelPress}
+        onAccelRelease={handleAccelRelease}
+        onJumpPress={handleJumpPress}
+        onJumpRelease={handleJumpRelease}
         leftTilt={leftTiltDisplay}
         rightTilt={rightTiltDisplay}
+        accelTilt={accelHold}
         disabled={isDisabled}
       />
     </View>
@@ -990,6 +1377,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 20,
   },
+  speedTubeMax: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(148, 163, 184, 0.95)',
+    marginBottom: 4,
+  },
   speedTubeOuter: {
     width: 28,
     height: 160,
@@ -1029,24 +1422,92 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'rgba(34, 197, 94, 0.95)',
   },
+  inventoryWrap: {
+    position: 'absolute',
+    right: 12,
+    top: SCREEN_HEIGHT * 0.16,
+    zIndex: 20,
+    flexDirection: 'column',
+    gap: 8,
+  },
+  inventorySlot: {
+    backgroundColor: 'rgba(30, 41, 59, 0.85)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(168, 85, 247, 0.4)',
+    alignItems: 'center',
+    minWidth: 56,
+  },
+  inventorySlotDisabled: {
+    opacity: 0.5,
+  },
+  inventorySlotPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.96 }],
+  },
+  inventorySlotFlash: {
+    borderColor: '#22c55e',
+    borderWidth: 3,
+    shadowColor: '#22c55e',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+  },
+  inventoryEmoji: {
+    fontSize: 22,
+  },
+  inventoryCount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#f1f5f9',
+    marginTop: 2,
+  },
+  pathArrowWrap: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 19,
+    pointerEvents: 'none',
+  },
+  pathArrow: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: 'rgba(15, 23, 42, 0.75)',
+    textShadowColor: '#fff',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
   topRight: {
     position: 'absolute',
     top: 12,
     right: 16,
     zIndex: 20,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  resetButton: {
+  iconButton: {
     backgroundColor: '#64748b',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  resetButtonDisabled: {
+  iconButtonDisabled: {
     backgroundColor: '#94a3b8',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconButtonText: {
+    fontSize: 22,
   },
   emojiItemPlain: {
     position: 'absolute',
@@ -1057,6 +1518,87 @@ const styles = StyleSheet.create({
   },
   emojiText: {
     fontSize: 22,
+  },
+  winOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 30,
+    padding: 24,
+  },
+  winTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fbbf24',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  winMissionCard: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(59, 130, 246, 0.4)',
+    paddingVertical: 20,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    marginBottom: 16,
+    minWidth: 280,
+  },
+  winMissionIcon: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  winMissionName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#f1f5f9',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  winMissionDistance: {
+    fontSize: 16,
+    color: '#94a3b8',
+  },
+  winMissionComplete: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#22c55e',
+    marginBottom: 8,
+  },
+  winBonus: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fbbf24',
+    marginBottom: 24,
+  },
+  winButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  winButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 140,
+    justifyContent: 'center',
+  },
+  winButtonPrimary: {
+    backgroundColor: '#0ea5e9',
+  },
+  winButtonSecondary: {
+    backgroundColor: '#64748b',
+  },
+  winButtonIcon: {
+    fontSize: 20,
+  },
+  winButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   popupWrap: {
     position: 'absolute',
@@ -1080,11 +1622,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#f1f5f9',
     textAlign: 'center',
-  },
-  buttonLabel: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
   },
   skierColumn: {
     alignItems: 'center',
