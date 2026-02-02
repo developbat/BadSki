@@ -34,7 +34,6 @@ type Props = {
   freeSkiRecord: number;
   onStartGame: (mission: Mission | null) => void;
   onOpenUpgrades: () => void;
-  onStartRoadTest?: () => void;
 };
 
 const PREVIEW_MAP_WIDTH = 44;
@@ -179,7 +178,7 @@ const previewStyles = StyleSheet.create({
   },
 });
 
-function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGame, onOpenUpgrades, onStartRoadTest }: Props): React.JSX.Element {
+function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGame, onOpenUpgrades }: Props): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
   const [phase, setPhase] = useState<'idle' | 'rolling' | 'preview'>('idle');
   const [rollingTheme, setRollingTheme] = useState<{ id: string; icon: string } | null>(null);
@@ -224,53 +223,53 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
     return (
       <View style={styles.container}>
         <View style={styles.entryContent}>
-        <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
-            <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
-          </View>
-          <View style={styles.topBarRight}>
-            <TouchableOpacity style={styles.upgradesButton} onPress={onOpenUpgrades} activeOpacity={0.8}>
-              <Text style={styles.upgradesButtonText}><Text style={styles.greenArrow}>↑</Text> {t('entry_upgrades')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.langButton} onPress={() => setShowLangPicker(true)} activeOpacity={0.8}>
-              <Text style={styles.langButtonText}>🌐 {locale.toUpperCase()}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <Text style={styles.title}>{t('appTitle')}</Text>
-        <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
-        <MissionPreview
-          mission={mission}
-          onStart={() => onStartGame(mission)}
-          onDifferent={() => {
-            setPhase('idle');
-            setMission(null);
-          }}
-        />
-        {showLangPicker ? (
-          <View style={styles.langPickerOverlay}>
-            <View style={styles.langPicker}>
-              <Text style={styles.langPickerTitle}>{t('entry_languagePicker')}</Text>
-              {SUPPORTED_LOCALES.map((loc) => (
-                <TouchableOpacity
-                  key={loc}
-                  style={[styles.langOption, locale === loc && styles.langOptionActive]}
-                  onPress={() => {
-                    setLocale(loc as SupportedLocale);
-                    setShowLangPicker(false);
-                  }}
-                  activeOpacity={0.8}>
-                  <Text style={styles.langOptionText}>{LOCALE_NAMES[loc as SupportedLocale]}</Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity style={styles.langPickerClose} onPress={() => setShowLangPicker(false)} activeOpacity={0.8}>
-                <Text style={styles.closeButtonText}>{t('upgrades_close')}</Text>
+          <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
+          <View style={styles.topBar}>
+            <View>
+              <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
+              <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
+            </View>
+            <View style={styles.topBarRight}>
+              <TouchableOpacity style={styles.upgradesButton} onPress={onOpenUpgrades} activeOpacity={0.8}>
+                <Text style={styles.upgradesButtonText}><Text style={styles.greenArrow}>↑</Text> {t('entry_upgrades')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.langButton} onPress={() => setShowLangPicker(true)} activeOpacity={0.8}>
+                <Text style={styles.langButtonText}>🌐 {locale.toUpperCase()}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        ) : null}
+          <Text style={styles.title}>{t('appTitle')}</Text>
+          <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
+          <MissionPreview
+            mission={mission}
+            onStart={() => onStartGame(mission)}
+            onDifferent={() => {
+              setPhase('idle');
+              setMission(null);
+            }}
+          />
+          {showLangPicker ? (
+            <View style={styles.langPickerOverlay}>
+              <View style={styles.langPicker}>
+                <Text style={styles.langPickerTitle}>{t('entry_languagePicker')}</Text>
+                {SUPPORTED_LOCALES.map((loc) => (
+                  <TouchableOpacity
+                    key={loc}
+                    style={[styles.langOption, locale === loc && styles.langOptionActive]}
+                    onPress={() => {
+                      setLocale(loc as SupportedLocale);
+                      setShowLangPicker(false);
+                    }}
+                    activeOpacity={0.8}>
+                    <Text style={styles.langOptionText}>{LOCALE_NAMES[loc as SupportedLocale]}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity style={styles.langPickerClose} onPress={() => setShowLangPicker(false)} activeOpacity={0.8}>
+                  <Text style={styles.closeButtonText}>{t('upgrades_close')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
         </View>
       </View>
     );
@@ -297,50 +296,50 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
     return (
       <View style={styles.container}>
         <View style={styles.entryContent}>
-        <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
-        <View style={styles.topBar}>
-          <View>
-            <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
-            <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
-          </View>
-        </View>
-        <Text style={styles.title}>{t('appTitle')}</Text>
-        <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
-        <Text style={styles.rollingLabel}>{t('entry_scenariosComing')}</Text>
-        <Animated.View style={[styles.rollingBox, { opacity: rollOpacity }]}>
-          <View style={previewStyles.pathRow}>
-            <View style={previewStyles.miniMap}>
-              {pathSegments.map((seg, i) => {
-                const dx = seg.x1 - seg.x0;
-                const dy = seg.y1 - seg.y0;
-                const len = Math.hypot(dx, dy) || 1;
-                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-                const cx = (seg.x0 + seg.x1) / 2;
-                const cy = (seg.y0 + seg.y1) / 2;
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      previewStyles.segment,
-                      {
-                        left: cx - len / 2,
-                        top: cy - 1,
-                        width: len,
-                        transform: [{ rotate: `${angle}deg` }],
-                      },
-                    ]}
-                  />
-                );
-              })}
-            </View>
-            <View style={previewStyles.info}>
-              <Text style={previewStyles.scenarioIcon}>{rollingTheme.icon}</Text>
-              <Text style={styles.rollingText}>
-                {t(('scenario_' + rollingTheme.id) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
-              </Text>
+          <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
+          <View style={styles.topBar}>
+            <View>
+              <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
+              <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
             </View>
           </View>
-        </Animated.View>
+          <Text style={styles.title}>{t('appTitle')}</Text>
+          <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
+          <Text style={styles.rollingLabel}>{t('entry_scenariosComing')}</Text>
+          <Animated.View style={[styles.rollingBox, { opacity: rollOpacity }]}>
+            <View style={previewStyles.pathRow}>
+              <View style={previewStyles.miniMap}>
+                {pathSegments.map((seg, i) => {
+                  const dx = seg.x1 - seg.x0;
+                  const dy = seg.y1 - seg.y0;
+                  const len = Math.hypot(dx, dy) || 1;
+                  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                  const cx = (seg.x0 + seg.x1) / 2;
+                  const cy = (seg.y0 + seg.y1) / 2;
+                  return (
+                    <View
+                      key={i}
+                      style={[
+                        previewStyles.segment,
+                        {
+                          left: cx - len / 2,
+                          top: cy - 1,
+                          width: len,
+                          transform: [{ rotate: `${angle}deg` }],
+                        },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+              <View style={previewStyles.info}>
+                <Text style={previewStyles.scenarioIcon}>{rollingTheme.icon}</Text>
+                <Text style={styles.rollingText}>
+                  {t(('scenario_' + rollingTheme.id) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+                </Text>
+              </View>
+            </View>
+          </Animated.View>
         </View>
       </View>
     );
@@ -391,14 +390,6 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
           </Text>
         ) : null}
       </TouchableOpacity>
-      {onStartRoadTest ? (
-        <TouchableOpacity
-          style={[styles.button, styles.buttonRoadTest]}
-          onPress={onStartRoadTest}
-          activeOpacity={0.8}>
-          <Text style={styles.buttonTextRoadTest}>🛣 Road test (rulo sahne)</Text>
-        </TouchableOpacity>
-      ) : null}
       {showLangPicker ? (
         <View style={styles.langPickerOverlay}>
           <View style={styles.langPicker}>
@@ -549,17 +540,6 @@ const styles = StyleSheet.create({
   buttonTextSecondary: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#94a3b8',
-  },
-  buttonRoadTest: {
-    marginTop: 8,
-    backgroundColor: 'rgba(100, 116, 139, 0.3)',
-    borderWidth: 1,
-    borderColor: '#64748b',
-  },
-  buttonTextRoadTest: {
-    fontSize: 15,
-    fontWeight: '500',
     color: '#94a3b8',
   },
   rollingBox: {

@@ -13,8 +13,12 @@ import {
   Pressable,
   Text,
   StatusBar,
+  TouchableOpacity,
 } from 'react-native';
 import GamePad from '../components/GamePad';
+import MiniMap from '../components/MiniMap';
+import { getPathCurveAt, SCENARIO_THEMES, type Mission, type PathPoint } from '../constants/missions';
+import { useI18n } from '../i18n';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -52,13 +56,34 @@ const MIN_SPEED_KMH = 5;
 const MAX_SPEED_KMH = 80;
 const SCROLL_FACTOR = 0.18;
 
+const TOTAL_SCROLL_REF_INIT = 0;
+const CURVE_AMPLITUDE = 0.35;
+const CURVE_FREQUENCY = 0.0005;
+const DRIFT_STRENGTH = 0.7;
+const CURVE_TILT_DEG = 7;
+const CURVE_CAMERA_DEG = 2.5;
+/** Keskin virajlarda kamera açısını biraz artır: curve² ile ek açı (max +1.2°). */
+const CURVE_CAMERA_SHARP_BOOST = 1.2;
+
 type SkierState = 'stand-ski' | 'left-ski' | 'right-ski' | 'jump' | 'clumsy' | 'fall-florr';
 
+export type RoadTestMode = 'standalone' | 'rolling' | 'preview' | 'game';
+
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
+  /** Harita virajını simüle etmek için path noktaları (preview/rolling). Yoksa prosedürel viraj. */
+  pathPoints?: PathPoint[] | null;
+  /** Preview modunda gösterilecek görev (isim, km) */
+  mission?: Mission | null;
+  /** Görev önizlemede "Başla" tıklanınca */
+  onStart?: () => void;
+  /** Görev önizlemede "Farklı görev" tıklanınca */
+  onDifferent?: () => void;
+  mode?: RoadTestMode;
 };
 
-function RoadTestScreen({ onBack }: Props): React.JSX.Element {
+function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mode = 'standalone' }: Props): React.JSX.Element {
+  const { t } = useI18n();
   const translateY = useRef(new Animated.Value(-INITIAL_OFFSET_PX)).current;
   const [tiles, setTiles] = useState(() => Array(NUM_TILES).fill(FLAT_IMAGE));
   const totalHeight = NUM_TILES * TILE_HEIGHT;
@@ -66,6 +91,7 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
   const [speed, setSpeed] = useState(MIN_SPEED_KMH);
   const speedRef = useRef(MIN_SPEED_KMH);
   const scrollOffsetRef = useRef(0);
+  const totalScrollRef = useRef(TOTAL_SCROLL_REF_INIT);
   const lastAccelAddRef = useRef(0);
 
   const skierOffsetXRef = useRef(0);
@@ -73,6 +99,8 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
   const panXRef = useRef(0);
   const panXAnim = useRef(new Animated.Value(0)).current;
   const charXAnim = useRef(new Animated.Value(0)).current;
+  const curveTiltAnim = useRef(new Animated.Value(0)).current;
+  const curveCameraAnim = useRef(new Animated.Value(0)).current;
   const leftPressedAtRef = useRef(0);
   const rightPressedAtRef = useRef(0);
   const leftTiltRef = useRef(0);
@@ -87,7 +115,15 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
   const jumpEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clumsyEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Path tabanlı viraj için: kat edilen mesafe (m). pathPoints varken her frame güncellenir. */
+  const distanceMetersRef = useRef(0);
+  const [distanceTraveledMeters, setDistanceTraveledMeters] = useState(0);
+
   speedRef.current = speed;
+
+  useLayoutEffect(() => {
+    if (pathPoints?.length) distanceMetersRef.current = 0;
+  }, [pathPoints]);
 
   useLayoutEffect(() => {
     translateY.setValue(-INITIAL_OFFSET_PX);
@@ -125,8 +161,19 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
           rightTiltRef.current = 0;
         }
       }
+      const curve = pathPoints?.length
+        ? getPathCurveAt(distanceMetersRef.current, pathPoints)
+        : CURVE_AMPLITUDE * Math.sin(totalScrollRef.current * CURVE_FREQUENCY);
+      if (canMove && !worldPaused && speedRef.current > 0) {
+        const drift = -curve * DRIFT_STRENGTH * (dt / 16) * (0.5 + speedRef.current / 160);
+        skierOffsetXRef.current += drift;
+      }
       skierOffsetXRef.current = Math.max(-MAX_OFFSET_PX, Math.min(MAX_OFFSET_PX, skierOffsetXRef.current));
       skierOffsetXAnim.setValue(skierOffsetXRef.current);
+
+      curveTiltAnim.setValue(curve * CURVE_TILT_DEG);
+      const cameraAngle = curve * CURVE_CAMERA_DEG + curve * curve * curve * CURVE_CAMERA_SHARP_BOOST;
+      curveCameraAnim.setValue(cameraAngle);
 
       const targetPanX = ROAD_CENTER_WORLD + skierOffsetXRef.current - SCREEN_WIDTH / 2;
       const minPan = 0;
@@ -142,6 +189,10 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
         const effectiveSpeed = Math.max(MIN_SPEED_KMH * 0.3, speedRef.current * speedMult);
         const delta = effectiveSpeed * SCROLL_FACTOR * (dt / 16);
         scrollOffsetRef.current += delta;
+        totalScrollRef.current += delta;
+        if (pathPoints?.length) {
+          distanceMetersRef.current += (effectiveSpeed * dt) / 3600;
+        }
         const n = Math.floor(scrollOffsetRef.current / TILE_HEIGHT);
         if (n > 0) {
           scrollOffsetRef.current -= n * TILE_HEIGHT;
@@ -192,9 +243,10 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
     const id = setInterval(() => {
       setLeftTiltDisplay(leftTiltRef.current);
       setRightTiltDisplay(rightTiltRef.current);
+      if (pathPoints?.length) setDistanceTraveledMeters(distanceMetersRef.current);
     }, 120);
     return () => clearInterval(id);
-  }, []);
+  }, [pathPoints?.length]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -224,41 +276,63 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
     : state === 'fall-florr' ? FALL_IMAGE
     : STAND_SKI_IMAGE;
 
+  const curveTiltDeg = curveTiltAnim.interpolate({
+    inputRange: [-CURVE_TILT_DEG - 2, CURVE_TILT_DEG + 2],
+    outputRange: [-(CURVE_TILT_DEG + 2) + 'deg', (CURVE_TILT_DEG + 2) + 'deg'],
+  });
+  const curveCameraDeg = curveCameraAnim.interpolate({
+    inputRange: [-5, 5],
+    outputRange: ['-5deg', '5deg'],
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.roadWrap} pointerEvents="none">
-        <Animated.View
-          style={[
-            styles.roadStrip,
-            {
-              width: ROAD_IMAGE_WIDTH,
-              height: totalHeight,
-              transform: [{ translateX: panXAnim }, { translateY }],
-            },
-          ]}>
-          {tiles.map((src, i) => (
-            <Image
-              key={`tile-${i}`}
-              source={src}
-              style={[styles.tile, { top: i * TILE_HEIGHT, width: ROAD_IMAGE_WIDTH, height: TILE_HEIGHT }]}
-              resizeMode="stretch"
-            />
-          ))}
-        </Animated.View>
-      </View>
-      <View style={styles.skierPlaceholder} pointerEvents="none">
-        <Animated.View
-          style={[
-            styles.skierWrap,
-            {
-              left: SCREEN_WIDTH / 2 - 30,
-              transform: [{ translateX: charXAnim }],
-            },
-          ]}>
-          <Image source={skierSource} style={styles.skierImage} resizeMode="contain" />
-        </Animated.View>
-      </View>
+      <Animated.View
+        style={[styles.sceneWrap, { transform: [{ rotate: curveCameraDeg }] }]}
+        pointerEvents="none">
+        <View style={styles.roadWrap}>
+          <Animated.View
+            style={[
+              styles.roadStrip,
+              {
+                width: ROAD_IMAGE_WIDTH,
+                height: totalHeight,
+                transform: [{ translateX: panXAnim }, { translateY }],
+              },
+            ]}>
+            {tiles.map((src, i) => (
+              <Image
+                key={`tile-${i}`}
+                source={src}
+                style={[styles.tile, { top: i * TILE_HEIGHT, width: ROAD_IMAGE_WIDTH, height: TILE_HEIGHT }]}
+                resizeMode="stretch"
+              />
+            ))}
+          </Animated.View>
+        </View>
+        <View style={styles.skierPlaceholder}>
+          <Animated.View
+            style={[
+              styles.skierWrap,
+              {
+                left: SCREEN_WIDTH / 2 - 30,
+                transform: [{ translateX: charXAnim }, { rotate: curveTiltDeg }],
+              },
+            ]}>
+            <Image source={skierSource} style={styles.skierImage} resizeMode="contain" />
+          </Animated.View>
+        </View>
+      </Animated.View>
+      {(mode === 'game' || mode === 'preview') && mission && pathPoints?.length ? (
+        <MiniMap
+          mission={mission}
+          distanceTraveledMeters={distanceTraveledMeters}
+          isOffPath={false}
+          scenarioLabel={t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+          containerStyle={styles.miniMapRightCenter}
+        />
+      ) : null}
       <GamePad
         onLeft={() => {
           leftPressedAtRef.current = Date.now();
@@ -285,12 +359,47 @@ function RoadTestScreen({ onBack }: Props): React.JSX.Element {
         accelTilt={accelHold}
         disabled={false}
       />
-      <View style={styles.speedBadge}>
-        <Text style={styles.speedBadgeText}>{speed.toFixed(0)} km/h</Text>
-      </View>
-      <Pressable style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>← Geri</Text>
-      </Pressable>
+      {(mode === 'standalone' || mode === 'game') && (
+        <View style={styles.speedBadge}>
+          <Text style={styles.speedBadgeText}>{speed.toFixed(0)} km/h</Text>
+        </View>
+      )}
+      {(mode === 'standalone' || mode === 'game') && onBack ? (
+        <Pressable style={styles.backButton} onPress={onBack}>
+          <Text style={styles.backButtonText}>← Geri</Text>
+        </Pressable>
+      ) : null}
+      {mode === 'rolling' && (
+        <View style={styles.missionOverlay} pointerEvents="box-none">
+          <Text style={styles.rollingOverlayLabel}>{t('entry_scenariosComing')}</Text>
+        </View>
+      )}
+      {mode === 'preview' && mission && (
+        <View style={styles.missionOverlay} pointerEvents="box-none">
+          <View style={styles.previewCard}>
+            <Text style={styles.previewCardTitle}>{t('entry_mission')}</Text>
+            <Text style={styles.previewScenarioIcon}>
+              {SCENARIO_THEMES.find((th) => th.id === mission.scenarioId)?.icon ?? '🎿'}
+            </Text>
+            <Text style={styles.previewScenarioName}>
+              {t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
+            </Text>
+            <Text style={styles.previewKm}>{(mission.distanceMeters / 1000).toFixed(0)} km</Text>
+            <TouchableOpacity
+              style={[styles.previewButton, styles.previewButtonPrimary]}
+              onPress={onStart}
+              activeOpacity={0.8}>
+              <Text style={styles.previewButtonText}>{t('entry_start')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.previewButton, styles.previewButtonSecondary]}
+              onPress={onDifferent}
+              activeOpacity={0.8}>
+              <Text style={styles.previewButtonTextSecondary}>{t('entry_differentMission')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -299,6 +408,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1e293b',
+  },
+  sceneWrap: {
+    flex: 1,
+    overflow: 'hidden',
   },
   roadWrap: {
     flex: 1,
@@ -339,11 +452,11 @@ const styles = StyleSheet.create({
   },
   speedBadge: {
     position: 'absolute',
-    top: 48,
+    top: 12,
     right: 16,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(15,23,42,0.85)',
+    backgroundColor: 'rgba(15,23,42,0.45)',
     borderRadius: 10,
   },
   speedBadgeText: {
@@ -353,17 +466,100 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 48,
+    top: 12,
     left: 16,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(15,23,42,0.85)',
+    backgroundColor: 'rgba(15,23,42,0.45)',
     borderRadius: 12,
+  },
+  miniMapRightCenter: {
+    left: undefined,
+    right: 8,
+    top: '50%',
+    marginTop: -80,
+    backgroundColor: 'rgba(15,23,42,0.4)',
   },
   backButtonText: {
     color: '#e2e8f0',
     fontSize: 16,
     fontWeight: '600',
+  },
+  missionOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  rollingOverlayLabel: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f8fafc',
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  previewCard: {
+    backgroundColor: 'rgba(30, 41, 59, 0.92)',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(100, 116, 139, 0.5)',
+    minWidth: 260,
+    alignItems: 'center',
+  },
+  previewCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94a3b8',
+    marginBottom: 8,
+  },
+  previewScenarioIcon: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  previewScenarioName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f8fafc',
+    marginBottom: 4,
+  },
+  previewKm: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginBottom: 16,
+  },
+  previewButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    minWidth: 200,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  previewButtonPrimary: {
+    backgroundColor: '#0ea5e9',
+  },
+  previewButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#64748b',
+  },
+  previewButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  previewButtonTextSecondary: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#94a3b8',
   },
 });
 

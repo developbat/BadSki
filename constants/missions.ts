@@ -132,6 +132,22 @@ export function getPathCenterXPx(
 const PATH_TURN_LOOK_AHEAD_M = 400;
 const PATH_TURN_THRESHOLD_PX = 18;
 
+/** Verilen mesafede (m) path eğriliği: -1 (sola) .. 0 (düz) .. +1 (sağa). RoadTestScreen viraj simülasyonu için. */
+const PATH_CURVE_LOOK_AHEAD_M = 120;
+
+export function getPathCurveAt(
+  distanceMeters: number,
+  points: PathPoint[],
+  lookAheadM: number = PATH_CURVE_LOOK_AHEAD_M
+): number {
+  if (points.length < 2) return 0;
+  const nowX = getPathCenterXPx(distanceMeters, points);
+  const aheadX = getPathCenterXPx(distanceMeters + lookAheadM, points);
+  const slopePxPerM = (aheadX - nowX) / lookAheadM;
+  const curve = slopePxPerM / (DRIFT_PX_PER_METER * 1.2);
+  return Math.max(-1, Math.min(1, curve));
+}
+
 /**
  * Mevcut konumdan ileride path’in dönüş yönü: 'left' | 'right' | null (düz).
  */

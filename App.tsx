@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native';
 import { I18nProvider } from './i18n';
 import EntryScreen from './screens/EntryScreen';
-import GameScreen from './screens/GameScreen';
 import UpgradesScreen from './screens/UpgradesScreen';
 import RoadTestScreen from './screens/RoadTestScreen';
 import type { Mission } from './constants/missions';
@@ -95,7 +94,6 @@ function App(): React.JSX.Element {
             freeSkiRecord={freeSkiRecord}
             onStartGame={handleStartGame}
             onOpenUpgrades={() => setScreen('upgrades')}
-            onStartRoadTest={() => setScreen('roadTest')}
           />
         )}
         {screen === 'upgrades' && (
@@ -112,49 +110,14 @@ function App(): React.JSX.Element {
           <RoadTestScreen onBack={() => setScreen('entry')} />
         )}
         {screen === 'game' && (
-          <GameScreen
+          <RoadTestScreen
+            mode="game"
             mission={mission}
-            totalEarned={totalEarned}
-            level={level}
-            goodSpawnLevel={upgrades.goodSpawnLevel ?? 0}
-            badSpawnLevel={upgrades.badSpawnLevel ?? 0}
-            initialMaxSpeed={initialMaxSpeed}
-            initialJumpDurationMs={initialJumpDurationMs}
-            initialRocketCount={initialRocketCount}
-            initialExtraLivesCount={initialExtraLivesCount}
-            startWithGhostSeconds={startWithGhostSeconds}
-            onExit={(score: number, distanceMeters?: number) => {
-              let done = false;
-              const doExit = () => {
-                if (done) return;
-                done = true;
-                handleRunEnd(score);
-                if (mission === null && distanceMeters != null && distanceMeters > 0) {
-                  updateFreeSkiRecordIfBetter(distanceMeters).then((newRecord) => {
-                    if (newRecord === distanceMeters) setFreeSkiRecord(distanceMeters);
-                  });
-                }
-                setScreen('entry');
-              };
-              const fallback = setTimeout(doExit, 2500);
-              showInterstitialWhenReady(() => {
-                clearTimeout(fallback);
-                doExit();
-              });
-            }}
-            onRunEnd={handleRunEnd}
-            onUseRocket={async () => {
-              const u = await getUpgrades();
-              await setUpgrades({ ...u, rocketStored: Math.max(0, (u.rocketStored ?? 0) - 1) });
-              loadStorage();
-            }}
-            onUseExtraLife={async () => {
-              const u = await getUpgrades();
-              await setUpgrades({ ...u, extraLivesStored: Math.max(0, (u.extraLivesStored ?? 0) - 1) });
-              loadStorage();
-            }}
+            pathPoints={mission?.points ?? null}
+            onBack={() => setScreen('entry')}
           />
         )}
+        {/* GameScreen yedek: screens/GameScreen.tsx – ileride alacaklarımıza bakılacak */}
       </SafeAreaView>
     </I18nProvider>
   );

@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, type ViewStyle } from 'react-native';
 import type { Mission } from '../constants/missions';
 import type { PathPoint } from '../constants/missions';
 import { getPathCenterXPx } from '../constants/missions';
@@ -23,6 +23,8 @@ type Props = {
   freeSkiPathPoints?: PathPoint[];
   /** Serbest kayda: toplam mesafe (m) – ilerleme çubuğu için */
   freeSkiTotalMeters?: number;
+  /** Konum/arka plan override (örn. sağ orta, daha şeffaf) */
+  containerStyle?: ViewStyle;
 };
 
 function MiniMap({
@@ -32,6 +34,7 @@ function MiniMap({
   scenarioLabel,
   freeSkiPathPoints,
   freeSkiTotalMeters,
+  containerStyle,
 }: Props): React.JSX.Element {
   const label = scenarioLabel ?? (mission?.scenarioId ?? '');
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -65,12 +68,9 @@ function MiniMap({
           styles.container,
           isOffPath && { borderColor: 'rgba(220, 38, 38, 0.9)', borderWidth: 2 },
           isOffPath && { backgroundColor },
-        ]}>
-        <Text style={styles.label}>{label}</Text>
-        <Text style={styles.km}>
-          {(distanceTraveledMeters / 1000).toFixed(1)} / {(totalM / 1000).toFixed(1)} km
-        </Text>
-      </Animated.View>
+          containerStyle,
+        ]}
+      />
     );
   }
 
@@ -103,8 +103,8 @@ function MiniMap({
         styles.container,
         isOffPath && { borderColor: 'rgba(220, 38, 38, 0.9)', borderWidth: 2 },
         isOffPath && { backgroundColor },
+        containerStyle,
       ]}>
-      <Text style={styles.label}>{label}</Text>
       <View style={styles.map}>
         {pathSegments.map((seg, i) => {
           const dx = seg.x1 - seg.x0;
@@ -137,12 +137,8 @@ function MiniMap({
             },
           ]}
         />
-        {/* Yukarı = hedef yönü göstergesi */}
         <View style={styles.topNotch} />
       </View>
-      <Text style={styles.km}>
-        {(distanceTraveledMeters / 1000).toFixed(1)} / {(totalM / 1000).toFixed(1)} km
-      </Text>
     </Animated.View>
   );
 }
@@ -152,25 +148,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 8,
     top: 48,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
-    borderRadius: 8,
-    padding: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(100, 116, 139, 0.35)',
+    backgroundColor: 'transparent',
+    padding: 0,
     zIndex: 20,
-  },
-  label: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94a3b8',
-    marginBottom: 4,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   map: {
     width: MAP_WIDTH,
     height: MAP_HEIGHT,
-    backgroundColor: 'rgba(30, 41, 59, 0.4)',
-    borderRadius: 4,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
   },
   topNotch: {
     position: 'absolute',
@@ -194,11 +185,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#22c55e',
     borderWidth: 1,
     borderColor: '#fff',
-  },
-  km: {
-    fontSize: 10,
-    color: '#cbd5e1',
-    marginTop: 4,
   },
 });
 
