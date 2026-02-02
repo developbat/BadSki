@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import {View, Image, StyleSheet} from 'react-native';
+import {Image, StyleSheet} from 'react-native';
 import { OBSTACLE_IMAGES, getObstacleById } from '../constants/obstacles';
 
 export type ObstacleSpawn = {
@@ -33,18 +33,6 @@ function ObstacleView({spawn, globalScale = 1}: Props): React.JSX.Element | null
   const left = spawn.worldX - width / 2;
   const top = spawn.worldY - height;
 
-  if (spawn.itemId === 'snow-bank') {
-    return (
-      <View
-        style={[
-          styles.obstacleImage,
-          styles.snowBank,
-          { left, top, width, height },
-        ]}
-      />
-    );
-  }
-
   const source = OBSTACLE_IMAGES[spawn.itemId];
   if (!source) return null;
   return (
@@ -59,17 +47,6 @@ function ObstacleView({spawn, globalScale = 1}: Props): React.JSX.Element | null
 const styles = StyleSheet.create({
   obstacleImage: {
     position: 'absolute',
-  },
-  snowBank: {
-    backgroundColor: '#cbd5e1',
-    borderRadius: 14,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.95)',
-    shadowColor: '#475569',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 3,
-    elevation: 4,
   },
 });
 

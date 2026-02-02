@@ -34,6 +34,7 @@ type Props = {
   freeSkiRecord: number;
   onStartGame: (mission: Mission | null) => void;
   onOpenUpgrades: () => void;
+  onStartRoadTest?: () => void;
 };
 
 const PREVIEW_MAP_WIDTH = 44;
@@ -178,7 +179,7 @@ const previewStyles = StyleSheet.create({
   },
 });
 
-function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGame, onOpenUpgrades }: Props): React.JSX.Element {
+function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGame, onOpenUpgrades, onStartRoadTest }: Props): React.JSX.Element {
   const { t, locale, setLocale } = useI18n();
   const [phase, setPhase] = useState<'idle' | 'rolling' | 'preview'>('idle');
   const [rollingTheme, setRollingTheme] = useState<{ id: string; icon: string } | null>(null);
@@ -390,6 +391,14 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
           </Text>
         ) : null}
       </TouchableOpacity>
+      {onStartRoadTest ? (
+        <TouchableOpacity
+          style={[styles.button, styles.buttonRoadTest]}
+          onPress={onStartRoadTest}
+          activeOpacity={0.8}>
+          <Text style={styles.buttonTextRoadTest}>🛣 Road test (rulo sahne)</Text>
+        </TouchableOpacity>
+      ) : null}
       {showLangPicker ? (
         <View style={styles.langPickerOverlay}>
           <View style={styles.langPicker}>
@@ -540,6 +549,17 @@ const styles = StyleSheet.create({
   buttonTextSecondary: {
     fontSize: 18,
     fontWeight: '600',
+    color: '#94a3b8',
+  },
+  buttonRoadTest: {
+    marginTop: 8,
+    backgroundColor: 'rgba(100, 116, 139, 0.3)',
+    borderWidth: 1,
+    borderColor: '#64748b',
+  },
+  buttonTextRoadTest: {
+    fontSize: 15,
+    fontWeight: '500',
     color: '#94a3b8',
   },
   rollingBox: {

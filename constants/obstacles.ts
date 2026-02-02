@@ -26,6 +26,8 @@ export const OBSTACLE_IMAGES: Record<string, ReturnType<typeof require>> = {
   'tree-big1': require('../assets/tree/tree-big1.png'),
   'tree-big2': require('../assets/tree/tree-big2.png'),
   'tree-big3': require('../assets/tree/tree-big3.png'),
+  'snow-bank': require('../assets/snows/long-pile.png'),
+  'snow-pile': require('../assets/snows/pile.png'),
 };
 
 // Kayakçı (skier) ebatı – ağaç minimum bu kadar (120×160)
@@ -47,8 +49,10 @@ export const OBSTACLE_LIST: ObstacleEntry[] = [
   { id: 'tree-big1', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
   { id: 'tree-big2', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
   { id: 'tree-big3', weight: 10, width: 150, height: 200, description: '🌲 = 💥' },
-  /** Yol kenarı (soft wall) – resim yok, ObstacleView’da View ile çizilir */
-  { id: 'snow-bank', weight: 0, width: 72, height: 64, description: 'Kar yığını' },
+  /** Yol kenarı (soft wall) – long-pile.png 300×60 */
+  { id: 'snow-bank', weight: 0, width: 300, height: 60, description: 'Kar yığını' },
+  /** Yol sınırı (pile.png) – 55×100 px, sürekli sol/sağ kenar */
+  { id: 'snow-pile', weight: 0, width: 55, height: 100, description: 'Kar yığını' },
 ];
 
 export function getObstacleById(id: string): ObstacleEntry | undefined {

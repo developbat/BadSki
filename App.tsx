@@ -9,6 +9,7 @@ import { I18nProvider } from './i18n';
 import EntryScreen from './screens/EntryScreen';
 import GameScreen from './screens/GameScreen';
 import UpgradesScreen from './screens/UpgradesScreen';
+import RoadTestScreen from './screens/RoadTestScreen';
 import type { Mission } from './constants/missions';
 import type { UpgradesState } from './constants/upgrades';
 import { getMaxSpeedFromLevel, getJumpDurationMs, getLevelFromTotalEarned, DEFAULT_UPGRADES } from './constants/upgrades';
@@ -24,7 +25,7 @@ import {
 import { consumePendingGhost } from './storage/pendingGhost';
 import { initAdMob, loadInterstitial, loadRewarded, showInterstitialWhenReady } from './services/adMob';
 
-type Screen = 'entry' | 'game' | 'upgrades';
+type Screen = 'entry' | 'game' | 'upgrades' | 'roadTest';
 
 function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>('entry');
@@ -94,6 +95,7 @@ function App(): React.JSX.Element {
             freeSkiRecord={freeSkiRecord}
             onStartGame={handleStartGame}
             onOpenUpgrades={() => setScreen('upgrades')}
+            onStartRoadTest={() => setScreen('roadTest')}
           />
         )}
         {screen === 'upgrades' && (
@@ -105,6 +107,9 @@ function App(): React.JSX.Element {
             onClose={() => setScreen('entry')}
             onPurchase={loadStorage}
           />
+        )}
+        {screen === 'roadTest' && (
+          <RoadTestScreen onBack={() => setScreen('entry')} />
         )}
         {screen === 'game' && (
           <GameScreen
