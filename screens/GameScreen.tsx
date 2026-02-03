@@ -1304,8 +1304,8 @@ function GameScreen({
       {!CINEMATIC_VIEW && boundaryHitAt > 0 ? (
         <View style={styles.boundarySignWrap} pointerEvents="none">
           <View style={styles.boundarySign}>
-            <Text style={styles.boundarySignIcon}>⚠</Text>
-            <Text style={styles.boundarySignText}>Sınır – hız %50</Text>
+            <Text style={styles.boundarySignIcon}>{t('game_boundaryHit')}</Text>
+            <Text style={styles.boundarySignText}>{t('game_boundarySignText')}</Text>
           </View>
         </View>
       ) : null}
@@ -1321,7 +1321,7 @@ function GameScreen({
               {t(('scenario_' + mission.scenarioId) as 'scenario_delivery' | 'scenario_chase' | 'scenario_escape' | 'scenario_survival' | 'scenario_reach')}
             </Text>
             <Text style={styles.winMissionDistance}>
-              {(mission.distanceMeters / 1000).toFixed(1)} km
+              {t('game_kmValue', { value: (mission.distanceMeters / 1000).toFixed(1) })}
             </Text>
           </View>
           <Text style={styles.winMissionComplete}>{t('game_missionComplete')}</Text>
@@ -1406,7 +1406,7 @@ function GameScreen({
       {!CINEMATIC_VIEW ? (
       <View style={styles.leftPanel}>
         <View style={styles.leftPanelRow}>
-          <Text style={styles.leftPanelIcon}>Lv</Text>
+          <Text style={styles.leftPanelIcon}>{t('common_levelShort')}</Text>
           <Text style={styles.leftPanelValue}>{level}</Text>
         </View>
         <View style={styles.leftPanelRow}>
@@ -1418,8 +1418,8 @@ function GameScreen({
             <Text style={styles.leftPanelIcon}>📏</Text>
             <Text style={styles.leftPanelValue}>
               {distanceTraveledMeters >= 1000
-                ? `${(distanceTraveledMeters / 1000).toFixed(1)} km`
-                : `${Math.round(distanceTraveledMeters)} m`}
+                ? t('game_kmValue', { value: (distanceTraveledMeters / 1000).toFixed(1) })
+                : t('game_mValue', { value: Math.round(distanceTraveledMeters) })}
             </Text>
           </View>
         ) : null}
@@ -1497,11 +1497,11 @@ function GameScreen({
           }}
           disabled={isDisabled}>
           <Text style={styles.inventoryEmoji}>🚀</Text>
-          <Text style={styles.inventoryCount}>×{rocketCount}</Text>
+          <Text style={styles.inventoryCount}>{t('game_inventoryCount', { count: rocketCount })}</Text>
         </Pressable>
         <View style={[styles.inventorySlot, shieldFlash && styles.inventorySlotFlash]}>
           <Text style={styles.inventoryEmoji}>🛡️</Text>
-          <Text style={styles.inventoryCount}>×{extraLivesCount}</Text>
+          <Text style={styles.inventoryCount}>{t('game_inventoryCount', { count: extraLivesCount })}</Text>
         </View>
         </>
         ) : null}
@@ -1551,19 +1551,19 @@ function GameScreen({
           {buffRemaining.ghost > 0 && (
             <View style={styles.buffBadge}>
               <Text style={styles.buffIcon}>👻</Text>
-              <Text style={styles.buffSec}>{buffRemaining.ghost}s</Text>
+              <Text style={styles.buffSec}>{t('game_secondsFormat', { n: buffRemaining.ghost })}</Text>
             </View>
           )}
           {buffRemaining.superSpeed > 0 && (
             <View style={styles.buffBadge}>
               <Text style={styles.buffIcon}>🚀</Text>
-              <Text style={styles.buffSec}>{buffRemaining.superSpeed}s</Text>
+              <Text style={styles.buffSec}>{t('game_secondsFormat', { n: buffRemaining.superSpeed })}</Text>
             </View>
           )}
           {buffRemaining.speedBoost > 0 && (
             <View style={styles.buffBadge}>
               <Text style={styles.buffIcon}>⚡</Text>
-              <Text style={styles.buffSec}>{buffRemaining.speedBoost}s</Text>
+              <Text style={styles.buffSec}>{t('game_secondsFormat', { n: buffRemaining.speedBoost })}</Text>
             </View>
           )}
         </View>

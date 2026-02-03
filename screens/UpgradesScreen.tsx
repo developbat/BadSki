@@ -204,10 +204,10 @@ function UpgradesScreen({
         <Text style={styles.title}>{t('upgrades_title')}</Text>
         <View style={styles.pointsRow}>
           <Text style={styles.pointsLabel}>{t('upgrades_yourPoints')}</Text>
-          <Text style={styles.pointsValue}>⭐ {totalPoints}</Text>
+          <Text style={styles.pointsValue}>{t('upgrades_pointsDisplay', { points: totalPoints })}</Text>
         </View>
         <View style={styles.pointsRow}>
-          <Text style={styles.pointsLabel}>Lv.{level} · {t('entry_totalEarned')}</Text>
+          <Text style={styles.pointsLabel}>{t('upgrades_levelEarned', { level, count: totalEarned })} {t('entry_totalEarned')}</Text>
           <Text style={styles.pointsValue}>{totalEarned}</Text>
         </View>
         <TouchableOpacity style={styles.closeButton} onPress={onClose} activeOpacity={0.8}>
@@ -232,7 +232,7 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>{t('upgrades_maxSpeedDesc')}</Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardStat}>
-              {t('upgrades_level')} {speedLevel}/{MAX_SPEED_LEVEL} → {getMaxSpeedFromLevel(speedLevel)} km
+              {t('upgrades_level')} {speedLevel}/{MAX_SPEED_LEVEL} → {getMaxSpeedFromLevel(speedLevel)} {t('game_kmUnit')}
             </Text>
             {speedLevel < MAX_SPEED_LEVEL ? (
               <View style={styles.cardActions}>
@@ -242,7 +242,7 @@ function UpgradesScreen({
                   disabled={!canBuySpeed}
                   activeOpacity={0.8}>
                   <Text style={styles.buyButtonText}>
-                    +10 km — ⭐ {speedCost}
+                    {t('upgrades_speedCostFormat', { cost: speedCost })}
                   </Text>
                 </TouchableOpacity>
                 {!canBuySpeed && (
@@ -265,7 +265,7 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>{t('upgrades_jumpDurationDesc')}</Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardStat}>
-              {t('upgrades_level')} {jumpLevel}/{MAX_JUMP_DURATION_LEVEL} → {getJumpDurationMs(jumpLevel)} ms
+              {t('upgrades_jumpStatFormat', { level: jumpLevel, max: MAX_JUMP_DURATION_LEVEL, ms: getJumpDurationMs(jumpLevel) })}
             </Text>
             {jumpLevel < MAX_JUMP_DURATION_LEVEL ? (
               <View style={styles.cardActions}>
@@ -274,7 +274,7 @@ function UpgradesScreen({
                   onPress={handleBuyJumpDuration}
                   disabled={!canBuyJump}
                   activeOpacity={0.8}>
-                  <Text style={styles.buyButtonText}>+200 ms — ⭐ {jumpCost}</Text>
+                  <Text style={styles.buyButtonText}>{t('upgrades_jumpCostFormat', { cost: jumpCost })}</Text>
                 </TouchableOpacity>
                 {!canBuyJump && (
                   <TouchableOpacity
@@ -295,16 +295,16 @@ function UpgradesScreen({
           <Text style={styles.cardTitle}>🚀 {t('upgrades_rocket')}</Text>
           <Text style={styles.cardDesc}>{t('upgrades_rocketDesc')}</Text>
           <View style={styles.cardRow}>
-            <Text style={styles.cardStat}>Envanter: {upgrades.rocketStored ?? 0}</Text>
+            <Text style={styles.cardStat}>{t('upgrades_inventoryCount', { count: upgrades.rocketStored ?? 0 })}</Text>
             <View style={styles.cardActions}>
               <TouchableOpacity
                 style={[styles.buyButton, !canBuyRocket && styles.buyButtonDisabled]}
                 onPress={handleBuyRocket}
                 disabled={!canBuyRocket}
                 activeOpacity={0.8}>
-                <Text style={styles.buyButtonText}>
-                  {t('upgrades_buy')} — ⭐ {ROCKET_COST}
-                </Text>
+<Text style={styles.buyButtonText}>
+                {t('upgrades_buyCostFormat', { buy: t('upgrades_buy'), cost: ROCKET_COST })}
+              </Text>
               </TouchableOpacity>
               {!canBuyRocket && (
                 <TouchableOpacity
@@ -332,8 +332,8 @@ function UpgradesScreen({
               onPress={handleBuyGhost}
               disabled={totalPoints < GHOST_START_COST}
               activeOpacity={0.8}>
-              <Text style={styles.buyButtonText}>
-                {t('upgrades_buy')} — ⭐ {GHOST_START_COST}
+<Text style={styles.buyButtonText}>
+              {t('upgrades_buyCostFormat', { buy: t('upgrades_buy'), cost: GHOST_START_COST })}
               </Text>
             </TouchableOpacity>
             {totalPoints < GHOST_START_COST && (
@@ -351,15 +351,15 @@ function UpgradesScreen({
           <Text style={styles.cardTitle}>🛡️ {t('upgrades_extraLife')}</Text>
           <Text style={styles.cardDesc}>{t('upgrades_extraLifeDesc')}</Text>
           <View style={styles.cardRow}>
-            <Text style={styles.cardStat}>{t('upgrades_extraLifeCount')}: {upgrades.extraLivesStored ?? 0}</Text>
+            <Text style={styles.cardStat}>{t('upgrades_extraLifeStatFormat', { label: t('upgrades_extraLifeCount'), count: upgrades.extraLivesStored ?? 0 })}</Text>
             <View style={styles.cardActions}>
               <TouchableOpacity
                 style={[styles.buyButton, !canBuyExtraLife && styles.buyButtonDisabled]}
                 onPress={handleBuyExtraLife}
                 disabled={!canBuyExtraLife}
                 activeOpacity={0.8}>
-                <Text style={styles.buyButtonText}>
-                  {t('upgrades_buy')} — ⭐ {EXTRA_LIFE_COST}
+<Text style={styles.buyButtonText}>
+                {t('upgrades_buyCostFormat', { buy: t('upgrades_buy'), cost: EXTRA_LIFE_COST })}
                 </Text>
               </TouchableOpacity>
               {!canBuyExtraLife && (
@@ -379,7 +379,7 @@ function UpgradesScreen({
           <Text style={styles.cardDesc}>{t('upgrades_goodSpawnDesc')}</Text>
           <View style={styles.cardRow}>
             <Text style={styles.cardStat}>
-              {t('upgrades_level')} {goodSpawnLevel}/{MAX_GOOD_SPAWN_LEVEL} → +{goodSpawnLevel * 2}% iyi
+              {t('upgrades_goodSpawnStatFormat', { level: goodSpawnLevel, max: MAX_GOOD_SPAWN_LEVEL, percent: goodSpawnLevel * 2, good: t('common_good') })}
             </Text>
             {goodSpawnLevel < MAX_GOOD_SPAWN_LEVEL ? (
               <View style={styles.cardActions}>
@@ -388,7 +388,7 @@ function UpgradesScreen({
                   onPress={handleBuyGoodSpawn}
                   disabled={!canBuyGoodSpawn}
                   activeOpacity={0.8}>
-                  <Text style={styles.buyButtonText}>+2% — ⭐ {goodSpawnCost}</Text>
+                  <Text style={styles.buyButtonText}>{t('upgrades_goodSpawnCostFormat', { cost: goodSpawnCost })}</Text>
                 </TouchableOpacity>
                 {!canBuyGoodSpawn && (
                   <TouchableOpacity

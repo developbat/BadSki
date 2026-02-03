@@ -226,15 +226,15 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
           <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
           <View style={styles.topBar}>
             <View>
-              <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
-              <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
+              <Text style={styles.pointsBadge}>{t('entry_pointsDisplay', { points: totalPoints })}</Text>
+              <Text style={styles.totalEarnedBadge}>{t('entry_levelDot', { level })}{totalEarned} {t('entry_totalEarned')}</Text>
             </View>
             <View style={styles.topBarRight}>
               <TouchableOpacity style={styles.upgradesButton} onPress={onOpenUpgrades} activeOpacity={0.8}>
                 <Text style={styles.upgradesButtonText}><Text style={styles.greenArrow}>↑</Text> {t('entry_upgrades')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.langButton} onPress={() => setShowLangPicker(true)} activeOpacity={0.8}>
-                <Text style={styles.langButtonText}>🌐 {locale.toUpperCase()}</Text>
+                <Text style={styles.langButtonText}>{t('entry_langButton', { locale: locale.toUpperCase() })}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -299,8 +299,8 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
           <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
           <View style={styles.topBar}>
             <View>
-              <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
-              <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
+              <Text style={styles.pointsBadge}>{t('entry_pointsDisplay', { points: totalPoints })}</Text>
+              <Text style={styles.totalEarnedBadge}>{t('entry_levelDot', { level })}{totalEarned} {t('entry_totalEarned')}</Text>
             </View>
           </View>
           <Text style={styles.title}>{t('appTitle')}</Text>
@@ -351,22 +351,22 @@ function EntryScreen({ totalPoints, totalEarned, level, freeSkiRecord, onStartGa
       <StatusBar barStyle="light-content" backgroundColor={styles.container.backgroundColor} />
       <View style={styles.topBar}>
         <View>
-          <Text style={styles.pointsBadge}>⭐ {totalPoints}</Text>
-          <Text style={styles.totalEarnedBadge}>Lv.{level} · {totalEarned} {t('entry_totalEarned')}</Text>
+          <Text style={styles.pointsBadge}>{t('entry_pointsDisplay', { points: totalPoints })}</Text>
+          <Text style={styles.totalEarnedBadge}>{t('entry_levelDot', { level })}{totalEarned} {t('entry_totalEarned')}</Text>
         </View>
         <View style={styles.topBarRight}>
           <TouchableOpacity style={styles.upgradesButton} onPress={onOpenUpgrades} activeOpacity={0.8}>
             <Text style={styles.upgradesButtonText}><Text style={styles.greenArrow}>↑</Text> {t('entry_upgrades')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.langButton} onPress={() => setShowLangPicker(true)} activeOpacity={0.8}>
-            <Text style={styles.langButtonText}>🌐 {locale.toUpperCase()}</Text>
+            <Text style={styles.langButtonText}>{t('entry_langButton', { locale: locale.toUpperCase() })}</Text>
           </TouchableOpacity>
         </View>
       </View>
       <Text style={styles.title}>{t('appTitle')}</Text>
       <Image source={SITTING_IMAGE} style={styles.sittingImage} resizeMode="contain" />
       <View style={styles.getMissionWrap}>
-        <Text style={styles.levelBadge}>Lv.{level}</Text>
+        <Text style={styles.levelBadge}>{t('entry_levelBadge', { level })}</Text>
         <TouchableOpacity
           style={[styles.button, styles.buttonPrimary]}
           onPress={handleGetMission}

@@ -115,6 +115,14 @@ function App(): React.JSX.Element {
             mission={mission}
             pathPoints={mission?.points ?? null}
             onBack={() => setScreen('entry')}
+            onExit={(score) => {
+              if (score > 0) handleRunEnd(score);
+            }}
+            level={level}
+            goodSpawnLevel={upgrades.goodSpawnLevel ?? 0}
+            badSpawnLevel={upgrades.badSpawnLevel ?? 0}
+            initialRocketCount={upgrades.rocketStored ?? 0}
+            initialExtraLivesCount={upgrades.extraLivesStored ?? 0}
           />
         )}
         {/* GameScreen yedek: screens/GameScreen.tsx – ileride alacaklarımıza bakılacak */}

@@ -55,6 +55,11 @@ export const OBSTACLE_LIST: ObstacleEntry[] = [
   { id: 'snow-pile', weight: 0, width: 55, height: 100, description: 'Kar yığını' },
 ];
 
+/** Yol içi spawn için (kar yığını hariç). */
+export const OBSTACLE_LIST_FOR_SPAWN = OBSTACLE_LIST.filter(
+  (o) => o.id !== 'snow-bank' && o.id !== 'snow-pile'
+);
+
 export function getObstacleById(id: string): ObstacleEntry | undefined {
   return OBSTACLE_LIST.find(o => o.id === id);
 }
