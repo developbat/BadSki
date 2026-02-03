@@ -18,6 +18,13 @@ import {
 import GamePad from '../components/GamePad';
 import MiniMap from '../components/MiniMap';
 import { getPathCurveAt, getPathCenterXPx, SCENARIO_THEMES, SCROLL_TO_METERS, type Mission, type PathPoint } from '../constants/missions';
+import {
+  LAYOUT_WIDTH_PX,
+  ROAD_LEFT_PX,
+  ROAD_RIGHT_PX,
+  ROAD_CENTER_PX,
+  ROAD_HALF_WIDTH_PX,
+} from '../constants/roadLayout';
 import { buildSpawnPlanForRun, type SpawnPlanEntry } from '../constants/spawnPlan';
 import { getProceduralPathCenterWorldX } from '../constants/trackPath';
 import { OBSTACLE_IMAGES } from '../constants/obstacles';
@@ -39,7 +46,7 @@ const JUMP_IMAGE = require('../assets/skyguy/jump.png');
 const CLUMSY_IMAGE = require('../assets/skyguy/clumsy.png');
 const FALL_IMAGE = require('../assets/skyguy/fall-florr.png');
 
-const ROAD_IMAGE_WIDTH = 896;
+/** Yol görseli yüksekliği (px). roadLayout'taki genişlik LAYOUT_WIDTH_PX. */
 const ROAD_IMAGE_HEIGHT = 1200;
 const TILE_HEIGHT = ROAD_IMAGE_HEIGHT;
 const ABOVE_TILES = 5;
@@ -47,23 +54,22 @@ const NUM_TILES = 12;
 const INITIAL_OFFSET_PX = ABOVE_TILES * TILE_HEIGHT;
 const MOVE_SPEED_PX_PER_MS = 0.45;
 
-const ROAD_LEFT_WORLD = ROAD_IMAGE_WIDTH / 3;
-const ROAD_RIGHT_WORLD = (ROAD_IMAGE_WIDTH * 2) / 3;
-const ROAD_CENTER_WORLD = ROAD_IMAGE_WIDTH / 2;
-const ROAD_HALF_WIDTH_PX = ROAD_IMAGE_WIDTH / 6;
 /** Oynanabilir yol: merkezden yanlara bu kadar dışarı genişletilir (her iki taraf, px). */
 const BOUNDARY_EXTRA_PX = 100;
 const MAX_OFFSET_PX = ROAD_HALF_WIDTH_PX + BOUNDARY_EXTRA_PX;
 /** Kamera sağ/sol kaymada hedefi ne kadar hızlı takip eder (yüksek = akıcı). */
 const CAMERA_EASE = 0.22;
 const BOUNDARY_SPEED_FACTOR = 0.4;
-/** Sınırda sürtünme: bu oranın üstündeyken hız yavaşlar ama gazla hızlanabilir (hafif sürtünme). */
+/** Sınırda sürtünme: bu oranın üstündeyken hız yavaşlar; gazla tekrar hızlanabilir. */
 const BOUNDARY_RUB_THRESHOLD = 0.72;
-const BOUNDARY_FRICTION_PER_MS = 0.012;
+/** Sınırda sürtünürken hız bu değerin altına inmez – frenleyerek durma değil, sürtünerek yavaş sürme hissi. */
+const BOUNDARY_MIN_SPEED_KMH = 18;
+/** Sınırda sürtünme: km/h per ms. Yüksek hızda hızlı yavaşlar, bu min hızda durur (tam durma yok). */
+const BOUNDARY_FRICTION_PER_MS = 0.024;
 /** Sınırda clumsy tetiklenince tekrar tetikleme için bekleme (ms). */
 const BOUNDARY_CLUMSY_COOLDOWN_MS = 1600;
-/** Sınırda tökezleyince merkeze doğru itme (px) – yola devam edebilsin. */
-const BOUNDARY_NUDGE_PX = 70;
+/** Sınırda tökezleyince merkeze minimal itme (px) – sadece takılmasın. */
+const BOUNDARY_NUDGE_PX = 10;
 
 const TILT_RAMP_MS = 260;
 const ACCEL_RAMP_MS = 260;
@@ -240,7 +246,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
     scrollOffsetRef.current = 0;
     totalScrollRef.current = TOTAL_SCROLL_REF_INIT;
     distanceMetersRef.current = 0;
-    const startPan = Math.max(0, Math.min(ROAD_IMAGE_WIDTH - SCREEN_WIDTH, ROAD_CENTER_WORLD - SCREEN_WIDTH / 2));
+    const startPan = Math.max(0, Math.min(LAYOUT_WIDTH_PX - SCREEN_WIDTH, ROAD_CENTER_PX - SCREEN_WIDTH / 2));
     panXRef.current = startPan;
     panXAnim.setValue(-startPan);
     charXAnim.setValue(0);
@@ -251,7 +257,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
   useLayoutEffect(() => {
     translateY.setValue(-INITIAL_OFFSET_PX);
     scrollOffsetRef.current = 0;
-    const startPan = Math.max(0, Math.min(ROAD_IMAGE_WIDTH - SCREEN_WIDTH, ROAD_CENTER_WORLD - SCREEN_WIDTH / 2));
+    const startPan = Math.max(0, Math.min(LAYOUT_WIDTH_PX - SCREEN_WIDTH, ROAD_CENTER_PX - SCREEN_WIDTH / 2));
     panXRef.current = startPan;
     panXAnim.setValue(-startPan);
     charXAnim.setValue(0);
@@ -273,6 +279,10 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
         badEffectUntilRef.current = 0;
         badSpeedMultiplierRef.current = 1;
       }
+      /* —— Sağa/sola kayma: sol/sağ basılı → skierOffsetX güncellenir (maxOffsetAtSpeed sınırı).
+       * Viraj: curve (path veya sin) → drift ile skierOffsetX’e ek itme. Kamera: targetPanX = merkez + offset,
+       * panXRef CAMERA_EASE ile hedefe yaklaşır. İlerleme: effectiveSpeed sadece sınırda (boundaryRatio >= threshold)
+       * düşer; orta bölgede tam hız, takılma hissi yok. */
       const leftHeld = leftPressedAtRef.current > 0;
       const rightHeld = rightPressedAtRef.current > 0;
       const canMove = state === 'stand-ski' || state === 'left-ski' || state === 'right-ski';
@@ -387,26 +397,27 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
               } else {
                 setSpeed((s) => Math.max(MIN_SPEED_KMH, s * bad.speedMultiplier));
               }
-              if (bad.scorePenalty != null) setScore((prev) => Math.max(0, prev + bad.scorePenalty));
+              const penalty = bad.scorePenalty;
+              if (penalty != null) setScore((prev) => Math.max(0, prev + penalty));
             }
           }
         }
       }
 
-      const targetPanX = ROAD_CENTER_WORLD + skierOffsetXRef.current - SCREEN_WIDTH / 2;
+      const targetPanX = ROAD_CENTER_PX + skierOffsetXRef.current - SCREEN_WIDTH / 2;
       const minPan = 0;
-      const maxPan = Math.max(0, ROAD_IMAGE_WIDTH - SCREEN_WIDTH);
+      const maxPan = Math.max(0, LAYOUT_WIDTH_PX - SCREEN_WIDTH);
       const clampedPan = Math.max(minPan, Math.min(maxPan, targetPanX));
       panXRef.current += (clampedPan - panXRef.current) * CAMERA_EASE;
       panXAnim.setValue(-panXRef.current);
-      charXAnim.setValue(-panXRef.current + skierOffsetXRef.current + ROAD_CENTER_WORLD - SCREEN_WIDTH / 2);
+      charXAnim.setValue(-panXRef.current + skierOffsetXRef.current + ROAD_CENTER_PX - SCREEN_WIDTH / 2);
 
       if (!worldPaused && speedRef.current > 0 && !gameOverRef.current) {
         const boundaryRatio = maxOffsetAtSpeed > 0 ? Math.abs(skierOffsetXRef.current) / maxOffsetAtSpeed : 0;
         /* Sınır sürtünmesi: özellik (ghost vb.) olsa bile her zaman hız düşer. */
         if (boundaryRatio >= BOUNDARY_RUB_THRESHOLD) {
           const decay = BOUNDARY_FRICTION_PER_MS * dt;
-          setSpeed((s) => Math.max(MIN_SPEED_KMH, s - decay));
+          setSpeed((s) => Math.max(BOUNDARY_MIN_SPEED_KMH, s - decay));
           if (canMove && now - lastBoundaryClumsyAtRef.current >= BOUNDARY_CLUMSY_COOLDOWN_MS) {
             lastBoundaryClumsyAtRef.current = now;
             if (skierOffsetXRef.current < 0) {
@@ -424,8 +435,12 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
             }, CLUMSY_DURATION_MS);
           }
         }
-        /* Sınırda yavaşlama: ghost/speed_boost olsa bile uygulanır. */
-        const speedMult = 1 - boundaryRatio * BOUNDARY_SPEED_FACTOR;
+        /* Sınırda yavaşlama: sadece gerçekten sınıra sürterken (boundaryRatio >= threshold) ilerleme düşer;
+         * orta/sol/sağ kaymada speedMult = 1 kalır, böylece takılma/durma hissi olmaz. */
+        const speedMult =
+          boundaryRatio >= BOUNDARY_RUB_THRESHOLD
+            ? 1 - boundaryRatio * BOUNDARY_SPEED_FACTOR
+            : 1;
         const badMult = badSpeedMultiplierRef.current;
         const effectiveSpeed = Math.max(MIN_SPEED_KMH * 0.3, speedRef.current * speedMult * badMult);
         const delta = effectiveSpeed * SCROLL_FACTOR * (dt / 16);
@@ -571,7 +586,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
         pathPoints?.length
           ? getPathCenterXPx(entryDist, pathPoints)
           : getProceduralPathCenterWorldX(e.scrollPx, SCREEN_WIDTH) - SCREEN_WIDTH / 2;
-      const spawnRoadX = ROAD_CENTER_WORLD + e.worldX - SCREEN_WIDTH / 2 - pathCenterAtSpawn;
+      const spawnRoadX = ROAD_CENTER_PX + e.worldX - SCREEN_WIDTH / 2 - pathCenterAtSpawn;
       const screenX = spawnRoadX - panX;
       const screenY = SKIER_SCREEN_Y - (entryDist - dist) * METERS_TO_STRIP_PX;
       result.push({ ...e, screenX, screenY });
@@ -590,7 +605,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
             style={[
               styles.roadStrip,
               {
-                width: ROAD_IMAGE_WIDTH,
+                width: LAYOUT_WIDTH_PX,
                 height: totalHeight,
                 transform: [{ translateX: panXAnim }, { translateY }],
               },
@@ -599,7 +614,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
               <Image
                 key={`tile-${i}`}
                 source={src}
-                style={[styles.tile, { top: i * TILE_HEIGHT, width: ROAD_IMAGE_WIDTH, height: TILE_HEIGHT }]}
+                style={[styles.tile, { top: i * TILE_HEIGHT, width: LAYOUT_WIDTH_PX, height: TILE_HEIGHT }]}
                 resizeMode="stretch"
               />
             ))}
@@ -738,7 +753,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
               style={[styles.winButton, styles.winButtonPrimary]}
               onPress={() => {
                 onExit?.(scoreRef.current, distanceMetersRef.current);
-                onBack();
+                onBack?.();
               }}>
               <Text style={styles.winButtonText}>{t('game_backToMenu')}</Text>
             </Pressable>
@@ -772,7 +787,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
               style={[styles.gameOverButton, styles.gameOverButtonSecondary]}
               onPress={() => {
                 onExit?.(scoreRef.current, distanceMetersRef.current);
-                onBack();
+                onBack?.();
               }}>
               <Text style={styles.gameOverButtonText}>{t('game_back')}</Text>
             </Pressable>
