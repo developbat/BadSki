@@ -52,26 +52,29 @@ const TILE_HEIGHT = ROAD_IMAGE_HEIGHT;
 const ABOVE_TILES = 5;
 const NUM_TILES = 12;
 const INITIAL_OFFSET_PX = ABOVE_TILES * TILE_HEIGHT;
-const MOVE_SPEED_PX_PER_MS = 0.45;
 
-/** Oynanabilir yol: merkezden yanlara bu kadar dışarı genişletilir (her iki taraf, px). */
-const BOUNDARY_EXTRA_PX = 100;
-const MAX_OFFSET_PX = ROAD_HALF_WIDTH_PX + BOUNDARY_EXTRA_PX;
+/** Yan kayma hızı: 20 km/h'de tam basılı 1 sn = merkezden bir kenara (ROAD_HALF_WIDTH_PX).
+ * Formül: px/ms = (ROAD_HALF_WIDTH_PX / 1000) * (hız_kmh / 20). 40 km/h'de ~0.5 sn, 5 km/h'de ~4 sn. */
+const LATERAL_REFERENCE_KMH = 20;
+const LATERAL_PX_PER_MS_AT_REF = ROAD_HALF_WIDTH_PX / 1000;
+
+/** Hareket ve sınır sadece görsel yol genişliği (ROAD_HALF_WIDTH_PX); yol dışına taşma yok, görünmez duvar yok. */
 /** Kamera sağ/sol kaymada hedefi ne kadar hızlı takip eder (yüksek = akıcı). */
 const CAMERA_EASE = 0.22;
 const BOUNDARY_SPEED_FACTOR = 0.4;
 /** Sınırda sürtünme: bu oranın üstündeyken hız yavaşlar; gazla tekrar hızlanabilir. */
 const BOUNDARY_RUB_THRESHOLD = 0.72;
-/** Sınırda sürtünürken hız bu değerin altına inmez – frenleyerek durma değil, sürtünerek yavaş sürme hissi. */
-const BOUNDARY_MIN_SPEED_KMH = 18;
-/** Sınırda sürtünme: km/h per ms. Yüksek hızda hızlı yavaşlar, bu min hızda durur (tam durma yok). */
+/** Sınırda sürtünme: doğal fren; hız 0'a kadar inebilir (tam durabilir). */
 const BOUNDARY_FRICTION_PER_MS = 0.024;
-/** Sınırda clumsy tetiklenince tekrar tetikleme için bekleme (ms). */
-const BOUNDARY_CLUMSY_COOLDOWN_MS = 1600;
-/** Sınırda tökezleyince merkeze minimal itme (px) – sadece takılmasın. */
-const BOUNDARY_NUDGE_PX = 10;
+/** Sınırda çok yavaşlayınca merkeze hafif kayma: bu hızın altında hafifçe ters yöne itilir (kaykay pisti hissi). */
+const BOUNDARY_GENTLE_NUDGE_SPEED_KMH = 10;
+const BOUNDARY_GENTLE_NUDGE_PX_PER_MS = 0.018;
 
 const TILT_RAMP_MS = 260;
+/** Buton bırakıldığında ibre hemen sıfıra düşmesin; yumuşak geçiş (ms). */
+const TILT_DECAY_MS = 140;
+/** Frame başına max yatay kayma (px); gerçekçi hızla uyumlu, ani sıçrama olmasın. */
+const MAX_LATERAL_DELTA_PX = 2.8;
 const ACCEL_RAMP_MS = 260;
 const ACCEL_ADD_INTERVAL_MS = 120;
 const JUMP_DURATION_MS = 600;
@@ -87,13 +90,17 @@ const SCROLL_FACTOR = 0.18;
 const TOTAL_SCROLL_REF_INIT = 0;
 const CURVE_AMPLITUDE = 0.35;
 const CURVE_FREQUENCY = 0.0005;
-const DRIFT_STRENGTH = 0.7;
-/** Karakter eğimi (virajda yatma). */
-const CURVE_TILT_DEG = 12;
-/** Kamera dönüşü (virajda sahne rotasyonu). */
-const CURVE_CAMERA_DEG = 4.5;
-/** Keskin virajlarda ek dönme: curve³ ile güçlü etki. */
-const CURVE_CAMERA_SHARP_BOOST = 2.8;
+/** Curve yumuşatma: rawCurve → smoothedCurve = lerp(prev, raw, CURVE_LERP). */
+const CURVE_LERP = 0.1;
+/** Yan hız (lateral velocity) ile drift: ivme sonra sönüm, pozisyon küçük kalsın. */
+const LATERAL_DRIFT_STRENGTH = 0.4;
+const LATERAL_DAMPING = 0.9;
+/** Frame başına max yan hız (px); pozisyon kayması ~ekranın 10–15% ile sınırlı. */
+const MAX_LATERAL_VELOCITY_PX = 1.2;
+/** Karakter eğimi (virajda yatma); viraj hissi kamera ile, tilt orta. */
+const CURVE_TILT_DEG = 8;
+/** Kamera dönüşü (virajda sahne rotasyonu); virajı asıl hissettiren. */
+const CURVE_CAMERA_DEG = 3;
 
 type SkierState = 'stand-ski' | 'left-ski' | 'right-ski' | 'jump' | 'clumsy' | 'fall-florr';
 
@@ -156,6 +163,8 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
   const charXAnim = useRef(new Animated.Value(0)).current;
   const curveTiltAnim = useRef(new Animated.Value(0)).current;
   const curveCameraAnim = useRef(new Animated.Value(0)).current;
+  const smoothedCurveRef = useRef(0);
+  const lateralVelocityRef = useRef(0);
   const leftPressedAtRef = useRef(0);
   const rightPressedAtRef = useRef(0);
   const leftTiltRef = useRef(0);
@@ -194,18 +203,24 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
   const badEffectUntilRef = useRef(0);
   const badSpeedMultiplierRef = useRef(1);
   const [rocketCount, setRocketCount] = useState(0);
+  const rocketCountRef = useRef(0);
   const [extraLivesCount, setExtraLivesCount] = useState(0);
   const extraLivesCountRef = useRef(0);
   const lastBoundaryClumsyAtRef = useRef(0);
   const lastJumpPressRef = useRef(0);
+  const lastAccelPressRef = useRef(0);
   const [lastCollectedItem, setLastCollectedItem] = useState<{ emoji: string; description: string; kind: 'good' | 'bad' | 'obstacle' | 'boundary' } | null>(null);
   const [restartCount, setRestartCount] = useState(0);
+  /** Süreli özellikler: karakter üstünde ikon + geri sayım (saniye). */
+  const [buffGhostSeconds, setBuffGhostSeconds] = useState<number | null>(null);
+  const [buffRocketSeconds, setBuffRocketSeconds] = useState<number | null>(null);
 
   speedRef.current = speed;
   scoreRef.current = score;
   gameWonRef.current = gameWon;
   gameOverRef.current = gameOver;
   extraLivesCountRef.current = extraLivesCount;
+  rocketCountRef.current = rocketCount;
 
   useLayoutEffect(() => {
     if (pathPoints?.length) distanceMetersRef.current = 0;
@@ -229,6 +244,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
     badEffectUntilRef.current = 0;
     badSpeedMultiplierRef.current = 1;
     lastJumpPressRef.current = 0;
+    lastAccelPressRef.current = 0;
     const plan = buildSpawnPlanForRun({
       mission: mission ?? null,
       level,
@@ -252,6 +268,8 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
     charXAnim.setValue(0);
     skierOffsetXRef.current = 0;
     skierOffsetXAnim.setValue(0);
+    smoothedCurveRef.current = 0;
+    lateralVelocityRef.current = 0;
   }, [mode, restartCount, translateY, panXAnim, charXAnim, skierOffsetXAnim]);
 
   useLayoutEffect(() => {
@@ -290,39 +308,47 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
 
       if (canMove) {
         const spd = speedRef.current;
-        const speedFactor = Math.max(0, Math.min(1, (spd - MIN_SPEED_KMH) / SPEED_RANGE));
-        const maxOffsetAtSpeed = MAX_OFFSET_PX * (1 - 0.55 * speedFactor);
-        const moveSpeedAtSpeed = MOVE_SPEED_PX_PER_MS * (1 - 0.6 * speedFactor);
+        const maxOffsetAtSpeed = ROAD_HALF_WIDTH_PX;
+        const moveSpeedAtSpeed = LATERAL_PX_PER_MS_AT_REF * (spd / LATERAL_REFERENCE_KMH);
         if (leftHeld) {
           const elapsed = now - leftPressedAtRef.current;
           leftTiltRef.current = Math.min(1, elapsed / TILT_RAMP_MS);
-          rightTiltRef.current = 0;
-          skierOffsetXRef.current = Math.max(-maxOffsetAtSpeed, skierOffsetXRef.current - moveSpeedAtSpeed * dt);
+          rightTiltRef.current = rightHeld ? rightTiltRef.current : Math.max(0, rightTiltRef.current - dt / TILT_DECAY_MS);
         } else if (rightHeld) {
           const elapsed = now - rightPressedAtRef.current;
           rightTiltRef.current = Math.min(1, elapsed / TILT_RAMP_MS);
-          leftTiltRef.current = 0;
-          skierOffsetXRef.current = Math.min(maxOffsetAtSpeed, skierOffsetXRef.current + moveSpeedAtSpeed * dt);
+          leftTiltRef.current = leftHeld ? leftTiltRef.current : Math.max(0, leftTiltRef.current - dt / TILT_DECAY_MS);
         } else {
-          leftTiltRef.current = 0;
-          rightTiltRef.current = 0;
+          leftTiltRef.current = Math.max(0, leftTiltRef.current - dt / TILT_DECAY_MS);
+          rightTiltRef.current = Math.max(0, rightTiltRef.current - dt / TILT_DECAY_MS);
         }
+        const tiltL = leftTiltRef.current;
+        const tiltR = rightTiltRef.current;
+        let dx = (tiltR > 0 ? moveSpeedAtSpeed * tiltR * dt : 0) - (tiltL > 0 ? moveSpeedAtSpeed * tiltL * dt : 0);
+        dx = Math.max(-MAX_LATERAL_DELTA_PX, Math.min(MAX_LATERAL_DELTA_PX, dx));
+        skierOffsetXRef.current = Math.max(-maxOffsetAtSpeed, Math.min(maxOffsetAtSpeed, skierOffsetXRef.current + dx));
       }
-      const curve = pathPoints?.length
+      const rawCurve = pathPoints?.length
         ? getPathCurveAt(distanceMetersRef.current, pathPoints)
         : CURVE_AMPLITUDE * Math.sin(totalScrollRef.current * CURVE_FREQUENCY);
+      const curve = smoothedCurveRef.current + CURVE_LERP * (rawCurve - smoothedCurveRef.current);
+      smoothedCurveRef.current = curve;
+
       if (canMove && !worldPaused && speedRef.current > 0) {
-        const drift = -curve * DRIFT_STRENGTH * (dt / 16) * (0.5 + speedRef.current / 160);
-        skierOffsetXRef.current += drift;
+        const spd = speedRef.current;
+        const speedFactorNorm = Math.min(1, spd / MAX_SPEED_KMH);
+        const driftInfluence = 0.5 + 0.5 * speedFactorNorm;
+        lateralVelocityRef.current += -curve * LATERAL_DRIFT_STRENGTH * driftInfluence * (dt / 16);
+        lateralVelocityRef.current *= LATERAL_DAMPING;
+        lateralVelocityRef.current = Math.max(-MAX_LATERAL_VELOCITY_PX, Math.min(MAX_LATERAL_VELOCITY_PX, lateralVelocityRef.current));
+        skierOffsetXRef.current += lateralVelocityRef.current;
       }
-      const spd = speedRef.current;
-      const speedFactor = Math.max(0, Math.min(1, (spd - MIN_SPEED_KMH) / SPEED_RANGE));
-      const maxOffsetAtSpeed = MAX_OFFSET_PX * (1 - 0.55 * speedFactor);
+      const maxOffsetAtSpeed = ROAD_HALF_WIDTH_PX;
       skierOffsetXRef.current = Math.max(-maxOffsetAtSpeed, Math.min(maxOffsetAtSpeed, skierOffsetXRef.current));
       skierOffsetXAnim.setValue(skierOffsetXRef.current);
 
       curveTiltAnim.setValue(curve * CURVE_TILT_DEG);
-      const cameraAngle = curve * CURVE_CAMERA_DEG + curve * curve * curve * CURVE_CAMERA_SHARP_BOOST;
+      const cameraAngle = curve * CURVE_CAMERA_DEG;
       curveCameraAnim.setValue(cameraAngle);
 
       if (mode === 'game' && spawnPlanRef.current.length > 0 && !worldPaused) {
@@ -413,26 +439,22 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
       charXAnim.setValue(-panXRef.current + skierOffsetXRef.current + ROAD_CENTER_PX - SCREEN_WIDTH / 2);
 
       if (!worldPaused && speedRef.current > 0 && !gameOverRef.current) {
-        const boundaryRatio = maxOffsetAtSpeed > 0 ? Math.abs(skierOffsetXRef.current) / maxOffsetAtSpeed : 0;
-        /* Sınır sürtünmesi: özellik (ghost vb.) olsa bile her zaman hız düşer. */
+        /* Sınır oranı = görsel yol kenarına göre (ROAD_HALF_WIDTH_PX); hıza göre kısalan maxOffset değil.
+         * Böylece "sınır" sadece gerçekten yol kenarına yaklaşınca tetiklenir, ortada görünmez duvar olmaz. */
+        const boundaryRatio = ROAD_HALF_WIDTH_PX > 0 ? Math.abs(skierOffsetXRef.current) / ROAD_HALF_WIDTH_PX : 0;
+        /* Sınır sürtünmesi: sadece doğal fren, takılma/clumsy yok; hız 0'a kadar inebilir. */
         if (boundaryRatio >= BOUNDARY_RUB_THRESHOLD) {
           const decay = BOUNDARY_FRICTION_PER_MS * dt;
-          setSpeed((s) => Math.max(BOUNDARY_MIN_SPEED_KMH, s - decay));
-          if (canMove && now - lastBoundaryClumsyAtRef.current >= BOUNDARY_CLUMSY_COOLDOWN_MS) {
-            lastBoundaryClumsyAtRef.current = now;
-            if (skierOffsetXRef.current < 0) {
-              skierOffsetXRef.current = Math.min(0, skierOffsetXRef.current + BOUNDARY_NUDGE_PX);
+          setSpeed((s) => Math.max(0, s - decay));
+          /* Çok yavaşlayınca merkeze hafif kayma – atılma değil, kaykay pisti gibi yumuşak. */
+          if (speedRef.current <= BOUNDARY_GENTLE_NUDGE_SPEED_KMH && Math.abs(skierOffsetXRef.current) > 2) {
+            const nudge = BOUNDARY_GENTLE_NUDGE_PX_PER_MS * dt;
+            if (skierOffsetXRef.current > 0) {
+              skierOffsetXRef.current = Math.max(0, skierOffsetXRef.current - nudge);
             } else {
-              skierOffsetXRef.current = Math.max(0, skierOffsetXRef.current - BOUNDARY_NUDGE_PX);
+              skierOffsetXRef.current = Math.min(0, skierOffsetXRef.current + nudge);
             }
             skierOffsetXAnim.setValue(skierOffsetXRef.current);
-            setLastCollectedItem({ emoji: '⚠️', description: t('game_boundaryHit'), kind: 'boundary' });
-            setState('clumsy');
-            if (clumsyEndRef.current) clearTimeout(clumsyEndRef.current);
-            clumsyEndRef.current = setTimeout(() => {
-              clumsyEndRef.current = null;
-              setState('stand-ski');
-            }, CLUMSY_DURATION_MS);
           }
         }
         /* Sınırda yavaşlama: sadece gerçekten sınıra sürterken (boundaryRatio >= threshold) ilerleme düşer;
@@ -442,7 +464,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
             ? 1 - boundaryRatio * BOUNDARY_SPEED_FACTOR
             : 1;
         const badMult = badSpeedMultiplierRef.current;
-        const effectiveSpeed = Math.max(MIN_SPEED_KMH * 0.3, speedRef.current * speedMult * badMult);
+        const effectiveSpeed = Math.max(0, speedRef.current * speedMult * badMult);
         const delta = effectiveSpeed * SCROLL_FACTOR * (dt / 16);
         scrollOffsetRef.current += delta;
         totalScrollRef.current += delta;
@@ -469,18 +491,28 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
     return () => clearInterval(id);
   }, [state]);
 
-  const handleJumpPress = useCallback(() => {
-    if (state !== 'stand-ski' && state !== 'left-ski' && state !== 'right-ski') return;
+  /** Roket tetikle: çift tıklama (zıpla veya hızlanma) ve roket varsa hız artışı. */
+  const tryConsumeRocket = useCallback(() => {
     const now = Date.now();
-    if (lastJumpPressRef.current > 0 && now - lastJumpPressRef.current < JUMP_DOUBLE_TAP_MS && rocketCount > 0) {
-      lastJumpPressRef.current = 0;
-      setRocketCount((c) => c - 1);
-      const add = SPEED_BOOST_ADD;
-      setSpeed((s) => Math.min(MAX_SPEED_KMH, s + add));
-      speedBoostAmountRef.current += add;
-      speedBoostUntilRef.current = now + ROCKET_DURATION_MS;
-      return;
+    if (rocketCountRef.current <= 0) return false;
+    const add = SPEED_BOOST_ADD;
+    setRocketCount((c) => c - 1);
+    setSpeed((s) => Math.min(MAX_SPEED_KMH, s + add));
+    speedBoostAmountRef.current += add;
+    speedBoostUntilRef.current = now + ROCKET_DURATION_MS;
+    return true;
+  }, []);
+
+  const handleJumpPress = useCallback(() => {
+    const now = Date.now();
+    /* Çift tıklama roket: state'e bakmadan önce kontrol et; zıplarken ikinci tıklama da roketi tetikleyebilsin. */
+    if (lastJumpPressRef.current > 0 && now - lastJumpPressRef.current < JUMP_DOUBLE_TAP_MS) {
+      if (tryConsumeRocket()) {
+        lastJumpPressRef.current = 0;
+        return;
+      }
     }
+    if (state !== 'stand-ski' && state !== 'left-ski' && state !== 'right-ski') return;
     lastJumpPressRef.current = now;
     if (jumpEndRef.current) clearTimeout(jumpEndRef.current);
     setState('jump');
@@ -488,7 +520,7 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
       jumpEndRef.current = null;
       setState('stand-ski');
     }, JUMP_DURATION_MS);
-  }, [state, rocketCount]);
+  }, [state, tryConsumeRocket]);
 
   const handleJumpRelease = useCallback(() => {}, []);
 
@@ -515,6 +547,20 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
       setSkierOffsetX(skierOffsetXRef.current);
       setPanX(panXRef.current);
     }, SPAWN_UPDATE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  /** Hayalet / roket sürelerini karakter üstü popup için güncelle (≈500 ms). */
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now();
+      const ghostRem = ghostUntilRef.current > now ? Math.ceil((ghostUntilRef.current - now) / 1000) : 0;
+      const rocketRem = speedBoostUntilRef.current > now ? Math.ceil((speedBoostUntilRef.current - now) / 1000) : 0;
+      setBuffGhostSeconds(ghostRem > 0 ? ghostRem : null);
+      setBuffRocketSeconds(rocketRem > 0 ? rocketRem : null);
+    };
+    tick();
+    const id = setInterval(tick, 500);
     return () => clearInterval(id);
   }, []);
 
@@ -618,6 +664,21 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
                 resizeMode="stretch"
               />
             ))}
+            {/* Test: sınır çizgisi – kaldırmak için bu iki View'ı silin */}
+            <View
+              style={[
+                styles.boundaryLine,
+                { left: ROAD_LEFT_PX, top: 0, height: totalHeight },
+              ]}
+              pointerEvents="none"
+            />
+            <View
+              style={[
+                styles.boundaryLine,
+                { left: ROAD_RIGHT_PX - 2, top: 0, height: totalHeight },
+              ]}
+              pointerEvents="none"
+            />
           </Animated.View>
         </View>
         {visibleSpawns.length > 0 && (
@@ -657,6 +718,22 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
                 transform: [{ translateX: charXAnim }, { rotate: curveTiltDeg }],
               },
             ]}>
+            {(buffGhostSeconds !== null || buffRocketSeconds !== null) && (
+              <View style={styles.buffPopupsWrap} pointerEvents="none">
+                {buffGhostSeconds !== null && (
+                  <View style={styles.buffPopupRow}>
+                    <Text style={styles.buffPopupIcon}>👻</Text>
+                    <Text style={styles.buffPopupSeconds}>{buffGhostSeconds}s</Text>
+                  </View>
+                )}
+                {buffRocketSeconds !== null && (
+                  <View style={styles.buffPopupRow}>
+                    <Text style={styles.buffPopupIcon}>🚀</Text>
+                    <Text style={styles.buffPopupSeconds}>{buffRocketSeconds}s</Text>
+                  </View>
+                )}
+              </View>
+            )}
             <Image source={skierSource} style={styles.skierImage} resizeMode="contain" />
           </Animated.View>
         </View>
@@ -688,7 +765,16 @@ function RoadTestScreen({ onBack, pathPoints, mission, onStart, onDifferent, mod
           if (leftPressedAtRef.current === 0 && (state === 'right-ski' || state === 'stand-ski')) setState('stand-ski');
         }}
         onAccel={() => {
-          accelPressedAtRef.current = Date.now();
+          const now = Date.now();
+          /* Hızlanma butonuna çift tıklama = roket (zıpla ×2 ile aynı). */
+          if (lastAccelPressRef.current > 0 && now - lastAccelPressRef.current < JUMP_DOUBLE_TAP_MS) {
+            if (tryConsumeRocket()) {
+              lastAccelPressRef.current = 0;
+              return;
+            }
+          }
+          lastAccelPressRef.current = now;
+          accelPressedAtRef.current = now;
           setState('stand-ski');
         }}
         onAccelRelease={handleAccelRelease}
@@ -875,6 +961,37 @@ const styles = StyleSheet.create({
     width: 60,
     height: 80,
   },
+  buffPopupsWrap: {
+    position: 'absolute',
+    bottom: 82,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: 4,
+  },
+  buffPopupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15,23,42,0.75)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    gap: 4,
+  },
+  buffPopupIcon: {
+    fontSize: 14,
+  },
+  buffPopupSeconds: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fbbf24',
+  },
+  /** Sınır çizgisi: şeffaf (görünmez), davranış aynı; debug için rengi 'red' yapabilirsin */
+  boundaryLine: {
+    position: 'absolute',
+    width: 2,
+    backgroundColor: 'transparent',
+  },
   spawnWrap: {
     position: 'absolute',
     left: 0,
@@ -986,6 +1103,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    zIndex: 100,
   },
   winCard: {
     backgroundColor: 'rgba(30, 41, 59, 0.95)',
@@ -1016,6 +1134,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
+    zIndex: 100,
   },
   gameOverCard: {
     backgroundColor: 'rgba(30, 41, 59, 0.92)',
